@@ -1,0 +1,11 @@
+.env
+.env.*
+!.env.example
+backend/application-local.properties
+backend/.env
+backend/.env.*
+frontend/.env
+backend/target/
+frontend/node_modules/
+frontend/dist/
+*.log
