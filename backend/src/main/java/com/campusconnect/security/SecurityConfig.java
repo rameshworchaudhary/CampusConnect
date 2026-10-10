@@ -65,6 +65,7 @@ public class SecurityConfig {
                 })
             )
             .authorizeHttpRequests(authorize -> authorize
+                .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                 // Public auth endpoints
                 .requestMatchers("/api/auth/**").permitAll()
                 // Public landing and read-only preview endpoints

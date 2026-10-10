@@ -44,7 +44,7 @@ public class EmailService {
 
         try {
             SimpleMailMessage message = new SimpleMailMessage();
-            message.setFrom(fromEmail);
+            message.setFrom(StringUtils.hasText(fromEmail) ? fromEmail : smtpUsername);
             message.setTo(toEmail);
             message.setSubject("CampusConnect — Verify Your Student Email");
             message.setText("Welcome to CampusConnect!\n\nPlease click the link below to verify your student account:\n" +
@@ -65,7 +65,7 @@ public class EmailService {
 
         try {
             SimpleMailMessage message = new SimpleMailMessage();
-            message.setFrom(fromEmail);
+            message.setFrom(StringUtils.hasText(fromEmail) ? fromEmail : smtpUsername);
             message.setTo(toEmail);
             message.setSubject("CampusConnect — Password Reset Request");
             message.setText("Hello,\n\nWe received a request to reset your CampusConnect password.\n" +

@@ -1,0 +1,7 @@
+{
+  "name": "CampusConnect",
+  "description": "Campus club and event management platform connecting students, club leaders, and campus administrators.",
+  "capabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
