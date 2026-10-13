@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import axios from 'axios';
 import { Link } from 'react-router-dom';
 import { Header } from '../components/Header';
 import { apiClient } from '../api/client';
@@ -19,8 +20,17 @@ export const ForgotPasswordPage: React.FC = () => {
       const res = await apiClient.post('/auth/forgot-password', { email });
       const msg = res.data.message || 'Password reset link sent to your registered email.';
       setMessage(msg);
-    } catch (err: any) {
-      setError(err.response?.data?.message || 'Failed to process request.');
+    } catch (err: unknown) {
+      if (axios.isAxiosError(err)) {
+        const responseMessage = err.response?.data?.message;
+        setError(
+          responseMessage || (err.response
+            ? `Request failed (HTTP ${err.response.status}). Please try again.`
+            : 'Cannot reach the backend. Check the Render service and allow this Vercel site in CORS_ALLOWED_ORIGINS.')
+        );
+      } else {
+        setError('Could not process the request. Please try again.');
+      }
     } finally {
       setLoading(false);
     }

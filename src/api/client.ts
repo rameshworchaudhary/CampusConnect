@@ -1,7 +1,16 @@
 import axios from 'axios';
 
-const configuredApiOrigin = import.meta.env.VITE_API_BASE_URL?.trim() || 'http://localhost:8080';
-const apiOrigin = configuredApiOrigin.replace(/\/+$/, '').replace(/\/api$/i, '');
+const defaultApiOrigin = import.meta.env.PROD
+  ? 'https://campusconnect-backend-oqlm.onrender.com'
+  : 'http://localhost:8080';
+const configuredApiOrigin = import.meta.env.VITE_API_BASE_URL?.trim();
+const isLocalApiOrigin = configuredApiOrigin
+  ? /^(?:(?:https?:)?\/\/)?(localhost|127(?:\.\d{1,3}){3}|\[?::1\]?)(:\d+)?(?:\/|$)/i.test(configuredApiOrigin)
+  : false;
+const apiOriginToUse = import.meta.env.PROD && isLocalApiOrigin
+  ? defaultApiOrigin
+  : configuredApiOrigin || defaultApiOrigin;
+const apiOrigin = apiOriginToUse.replace(/\/+$/, '').replace(/\/api$/i, '');
 const API_BASE_URL = `${apiOrigin}/api`;
 
 export const apiClient = axios.create({
