@@ -20,12 +20,9 @@ apiClient.interceptors.request.use((config) => {
 apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response && error.response.status === 401) {
-      // Don't auto-clear on failed login requests
-      if (!error.config.url.includes('/auth/login')) {
-        localStorage.removeItem('cc_auth_token');
-        localStorage.removeItem('cc_auth_user');
-      }
+    const hasAuthenticatedRequest = Boolean(error.config?.headers?.Authorization);
+    if (error.response?.status === 401 && hasAuthenticatedRequest) {
+      window.dispatchEvent(new Event('cc:unauthorized'));
     }
     return Promise.reject(error);
   }

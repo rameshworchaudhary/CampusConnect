@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
+import axios from 'axios';
 import { apiClient } from '../api/client';
 import { Role, User } from '../types';
 
@@ -19,7 +20,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [token, setToken] = useState<string | null>(() => localStorage.getItem('cc_auth_token'));
   const [user, setUser] = useState<User | null>(() => {
     const saved = localStorage.getItem('cc_auth_user');
-    return saved ? JSON.parse(saved) : null;
+    if (!saved) return null;
+
+    try {
+      return JSON.parse(saved) as User;
+    } catch {
+      localStorage.removeItem('cc_auth_user');
+      return null;
+    }
   });
 
   const login = (newToken: string, newUser: User) => {
@@ -44,14 +52,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setUser(response.data.data);
         localStorage.setItem('cc_auth_user', JSON.stringify(response.data.data));
       }
-    } catch {
-      logout();
+    } catch (error) {
+      if (axios.isAxiosError(error) && error.response?.status === 401) {
+        logout();
+        return;
+      }
+
+      console.error('Unable to refresh the authenticated user.', error);
     }
   };
 
   useEffect(() => {
     if (token) refreshUser();
   }, [token]);
+
+  useEffect(() => {
+    const handleUnauthorized = () => {
+      logout();
+    };
+
+    window.addEventListener('cc:unauthorized', handleUnauthorized);
+    return () => window.removeEventListener('cc:unauthorized', handleUnauthorized);
+  }, []);
 
   return (
     <AuthContext.Provider value={{ user, token, role: user?.role || null, isAuthenticated: !!token && !!user, login, logout, setUser, refreshUser }}>
