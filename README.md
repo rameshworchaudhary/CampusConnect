@@ -52,11 +52,12 @@ configure `DB_URL`, `DB_USERNAME`, `DB_PASSWORD`, `JWT_SECRET`,
 `FRONTEND_URL`, `CORS_ALLOWED_ORIGINS`, `MAIL_FROM`, and the admin bootstrap
 settings shown in `.env.example`.
 
-The frontend defaults to `http://localhost:8080/api`. To use a different
-public backend URL, create a root `.env.local`:
+The frontend defaults to the local API at `http://localhost:8080/api`. Set
+`VITE_API_BASE_URL` to the backend origin (without `/api`) to use another API.
+For local development, create a root `.env.local`:
 
 ```properties
-VITE_API_BASE_URL=http://localhost:8080/api
+VITE_API_BASE_URL=http://localhost:8080
 ```
 
 Never place database credentials, SMTP credentials, JWT secrets, or tokens in
@@ -94,8 +95,8 @@ credentials and connection URL supplied by your external MySQL provider:
 | `DB_USERNAME` | Yes | Production MySQL username |
 | `DB_PASSWORD` | Yes | Production MySQL password |
 | `JWT_SECRET` | Yes | Random secret of at least 32 characters |
-| `FRONTEND_URL` | Yes | Deployed frontend origin, for example `https://campusconnect.onrender.com` |
-| `CORS_ALLOWED_ORIGINS` | Yes | Comma-separated allowed frontend origins |
+| `FRONTEND_URL` | Yes | Deployed frontend origin, `https://campus-connect-three-snowy.vercel.app` |
+| `CORS_ALLOWED_ORIGINS` | Yes | Comma-separated allowed frontend origins; include `https://campus-connect-three-snowy.vercel.app` |
 | `MAIL_USERNAME` | Yes | SMTP account username |
 | `MAIL_PASSWORD` | Yes | SMTP password or provider app password |
 | `SMTP_HOST` | Yes | SMTP provider hostname |
@@ -129,24 +130,25 @@ configuration when `DB_URL` is not supplied.
 
 ### Frontend Static Site
 
-Create a Render **Static Site** from the same repository:
+Create a Vercel project from the repository:
 
-- **Root directory:** leave blank
-- **Build command:** `npm ci && npm run build`
-- **Publish directory:** `dist`
-- **Environment variable:** `VITE_API_BASE_URL=https://<your-backend-service>.onrender.com/api`
+- **Root directory:** repository root
+- **Build command:** `npm run build` (Vercel installs from `package-lock.json`)
+- **Output directory:** `dist`
+- **Environment variable:** `VITE_API_BASE_URL=https://campusconnect-backend-oqlm.onrender.com`
 
-Set the backend's `FRONTEND_URL` and `CORS_ALLOWED_ORIGINS` to the final
-frontend URL before testing login, registration, email verification, password
-reset, and role-protected workflows. SMTP links also use `FRONTEND_URL`, so
-the value must be the public frontend origin rather than a local URL.
+In the Render backend service, set `FRONTEND_URL` to
+`https://campus-connect-three-snowy.vercel.app` and
+`CORS_ALLOWED_ORIGINS` to that origin. The local development origins remain
+in the application defaults. SMTP verification and password-reset links use
+`FRONTEND_URL`, so use the public frontend origin rather than an API URL.
 
 ### Render deployment checklist
 
 - Configure the external MySQL database and import the existing schema.
 - Add all required backend environment variables in the Render dashboard.
 - Deploy the backend and confirm `/api/cms/public` responds successfully.
-- Set `VITE_API_BASE_URL` on the Static Site and redeploy it after changing it.
+- Set `VITE_API_BASE_URL` on Vercel and redeploy the frontend after changing it.
 - Update CORS and frontend URL values if Render assigns a different domain.
 - Configure SMTP sender permissions and test both verification and reset emails.
 - Use Render logs and database-provider logs for failures; never log secrets.

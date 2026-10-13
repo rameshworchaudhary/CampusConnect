@@ -27,7 +27,7 @@ public class EmailService {
             @Value("${spring.mail.password:}") String smtpPassword) {
         this.mailSender = mailSender;
         this.fromEmail = fromEmail;
-        this.frontendUrl = frontendUrl;
+        this.frontendUrl = frontendUrl.replaceAll("/+$", "");
         this.smtpUsername = smtpUsername;
         this.smtpPassword = smtpPassword;
     }
