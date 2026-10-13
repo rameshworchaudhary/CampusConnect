@@ -95,8 +95,8 @@ credentials and connection URL supplied by your external MySQL provider:
 | `DB_USERNAME` | Yes | Production MySQL username |
 | `DB_PASSWORD` | Yes | Production MySQL password |
 | `JWT_SECRET` | Yes | Random secret of at least 32 characters |
-| `FRONTEND_URL` | Yes | Deployed frontend origin, `https://campus-connect-three-snowy.vercel.app` |
-| `CORS_ALLOWED_ORIGINS` | Yes | Comma-separated allowed frontend origins; include `https://campus-connect-three-snowy.vercel.app` |
+| `FRONTEND_URL` | Yes | Production frontend origin, `https://campusconnect.rameshworchaudhary.com.np` |
+| `CORS_ALLOWED_ORIGINS` | Yes | Comma-separated frontend origins; include the custom domain and Vercel domain if both are used |
 | `MAIL_USERNAME` | Yes | SMTP account username |
 | `MAIL_PASSWORD` | Yes | SMTP password or provider app password |
 | `SMTP_HOST` | Yes | SMTP provider hostname |
@@ -138,10 +138,12 @@ Create a Vercel project from the repository:
 - **Environment variable:** `VITE_API_BASE_URL=https://campusconnect-backend-oqlm.onrender.com`
 
 In the Render backend service, set `FRONTEND_URL` to
-`https://campus-connect-three-snowy.vercel.app` and
-`CORS_ALLOWED_ORIGINS` to that origin. The local development origins remain
-in the application defaults. SMTP verification and password-reset links use
-`FRONTEND_URL`, so use the public frontend origin rather than an API URL.
+`https://campusconnect.rameshworchaudhary.com.np` and set
+`CORS_ALLOWED_ORIGINS` to
+`https://campusconnect.rameshworchaudhary.com.np,https://campus-connect-three-snowy.vercel.app`.
+The local development origins remain in the application defaults. SMTP
+verification and password-reset links use `FRONTEND_URL`, so use the public
+frontend origin rather than an API URL.
 
 ### Render deployment checklist
 

@@ -7,9 +7,13 @@ import com.campusconnect.repository.UserRepository;
 import com.campusconnect.repository.VerificationTokenRepository;
 import com.campusconnect.security.JwtTokenProvider;
 import com.campusconnect.security.UserPrincipal;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.core.task.TaskExecutor;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -30,6 +34,7 @@ public class AuthService {
     private final JwtTokenProvider tokenProvider;
     private final EmailService emailService;
     private final AuditLogService auditLogService;
+    private final TaskExecutor passwordResetEmailExecutor;
 
     public AuthService(
             UserRepository userRepository,
@@ -38,7 +43,8 @@ public class AuthService {
             PasswordEncoder passwordEncoder,
             JwtTokenProvider tokenProvider,
             EmailService emailService,
-            AuditLogService auditLogService) {
+            AuditLogService auditLogService,
+            @Qualifier("passwordResetEmailExecutor") TaskExecutor passwordResetEmailExecutor) {
         this.userRepository = userRepository;
         this.clubRepository = clubRepository;
         this.tokenRepository = tokenRepository;
@@ -46,6 +52,7 @@ public class AuthService {
         this.tokenProvider = tokenProvider;
         this.emailService = emailService;
         this.auditLogService = auditLogService;
+        this.passwordResetEmailExecutor = passwordResetEmailExecutor;
     }
 
     @Transactional
@@ -160,7 +167,14 @@ public class AuthService {
                     LocalDateTime.now().plusHours(1)
             );
             tokenRepository.save(token);
-            emailService.sendPasswordResetEmail(user.getEmail(), tokenStr);
+            String recipient = user.getEmail();
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    passwordResetEmailExecutor.execute(
+                            () -> emailService.sendPasswordResetEmail(recipient, tokenStr));
+                }
+            });
             auditLogService.record("PASSWORD_RESET_REQUESTED", user.getEmail(), user.getRole().name(),
                     user.getStudentId(), "Password reset link requested", ipAddress);
         });

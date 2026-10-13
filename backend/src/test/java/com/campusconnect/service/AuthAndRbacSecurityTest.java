@@ -46,7 +46,8 @@ class AuthAndRbacSecurityTest {
 
     @BeforeEach
     void setUp() {
-        authService = new AuthService(userRepository, clubRepository, tokenRepository, passwordEncoder, tokenProvider, emailService, auditLogService);
+        authService = new AuthService(userRepository, clubRepository, tokenRepository, passwordEncoder, tokenProvider,
+                emailService, auditLogService, Runnable::run);
         userService = new UserService(userRepository, clubRepository, auditLogService, authService);
     }
 
