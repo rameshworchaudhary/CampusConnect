@@ -1,12 +1,18 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Header } from '../components/Header';
 import { BottomNav } from '../components/BottomNav';
 import { Modal } from '../components/Modal';
 import { Toast } from '../components/Toast';
-import { AnnouncementItem, User, Club, AuditLogItem, PlatformStats, EventItem } from '../types';
-import { apiClient } from '../api/client';
+import { ImageUploader } from '../components/ImageUploader';
+import { AnnouncementItem, User, Club, AuditLogItem, PlatformStats, EventItem, Role } from '../types';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
+import { getPlatformStats } from '../services/statsService';
+import { getAllClubs, registerClub, approveClub, rejectClub, deleteClub, assignClubAdmin } from '../services/clubService';
+import { getAllUsers, updateUserRole, toggleUserStatus, deleteUser } from '../services/userService';
+import { getAllEvents, createEvent, deleteEvent, updateEvent } from '../services/eventService';
+import { getAllAnnouncements, createAnnouncement, deleteAnnouncement, toggleAnnouncementStatus } from '../services/announcementService';
+import { getAuditLogs } from '../services/auditService';
 
 export const SuperAdminDashboard: React.FC = () => {
   const { user, isAuthenticated } = useAuth();
@@ -14,35 +20,26 @@ export const SuperAdminDashboard: React.FC = () => {
 
   const [stats, setStats] = useState<PlatformStats | null>(null);
   const [statsLoading, setStatsLoading] = useState(true);
-  const [statsError, setStatsError] = useState<string | null>(null);
 
   const [clubs, setClubs] = useState<Club[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [events, setEvents] = useState<EventItem[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLogItem[]>([]);
   const [announcements, setAnnouncements] = useState<AnnouncementItem[]>([]);
-  const [dataError, setDataError] = useState<string | null>(null);
 
   const [searchClub, setSearchClub] = useState('');
   const [searchUser, setSearchUser] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('All');
-  const [activeTab, setActiveTab] = useState<'overview' | 'clubs' | 'users' | 'events' | 'announcements' | 'roles' | 'audit' | 'cms'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'clubs' | 'users' | 'events' | 'announcements' | 'roles' | 'audit'>('overview');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  // Active subsystem modal
-  const [showUsersModal, setShowUsersModal] = useState(false);
-  const [showCmsModal, setShowCmsModal] = useState(false);
+  // Modals
   const [showCreateClubModal, setShowCreateClubModal] = useState(false);
   const [showCreateEventModal, setShowCreateEventModal] = useState(false);
   const [showAnnouncementModal, setShowAnnouncementModal] = useState(false);
-  const [showAuditModal, setShowAuditModal] = useState(false);
-  const [showAnnouncementManager, setShowAnnouncementManager] = useState(false);
   const [showRoleModal, setShowRoleModal] = useState(false);
-  const [showEventManager, setShowEventManager] = useState(false);
-  const [showOperationsMenu, setShowOperationsMenu] = useState(false);
-  const operationsMenuRef = useRef<HTMLDivElement>(null);
 
-  // Generic in-app confirmation modal state
+  // Confirmation dialog
   const [confirmDialog, setConfirmDialog] = useState<{
     title: string;
     message: string;
@@ -50,266 +47,229 @@ export const SuperAdminDashboard: React.FC = () => {
     onConfirm: () => void;
   } | null>(null);
 
-  // Role Management Quick Action Form State
+  // Role Management State
   const [selectedUserForRole, setSelectedUserForRole] = useState<User | null>(null);
-  const [targetRole, setTargetRole] = useState<'CLUB_ADMIN' | 'SUPER_ADMIN' | 'STUDENT'>('CLUB_ADMIN');
-  const [targetClubId, setTargetClubId] = useState<number | ''>('');
+  const [targetRole, setTargetRole] = useState<Role>('CLUB_ADMIN');
+  const [targetClubId, setTargetClubId] = useState<string>('');
 
-  // New club creation form
+  // Create club form
   const [newClubName, setNewClubName] = useState('');
   const [newClubCat, setNewClubCat] = useState('Academic');
   const [newClubDesc, setNewClubDesc] = useState('');
   const [newClubSchedule, setNewClubSchedule] = useState('');
   const [newClubLocation, setNewClubLocation] = useState('');
+  const [newClubAdvisor, setNewClubAdvisor] = useState('');
+  const [newClubEmail, setNewClubEmail] = useState('');
+  const [newClubLogoUrl, setNewClubLogoUrl] = useState('');
 
+  // Create event form
   const [newEventTitle, setNewEventTitle] = useState('');
   const [newEventDescription, setNewEventDescription] = useState('');
   const [newEventDate, setNewEventDate] = useState('');
   const [newEventLocation, setNewEventLocation] = useState('');
   const [newEventLink, setNewEventLink] = useState('');
   const [newEventCapacity, setNewEventCapacity] = useState('100');
-  const [newEventClubId, setNewEventClubId] = useState<number | ''>('');
+  const [newEventClubId, setNewEventClubId] = useState<string>('');
+  const [newEventPosterUrl, setNewEventPosterUrl] = useState('');
+
+  // Announcement form
   const [newAnnouncementTitle, setNewAnnouncementTitle] = useState('');
   const [newAnnouncementContent, setNewAnnouncementContent] = useState('');
-  const [editingAnnouncement, setEditingAnnouncement] = useState<AnnouncementItem | null>(null);
-
-  // CMS edit form state
-  const [cmsSiteName, setCmsSiteName] = useState('');
-  const [cmsHeading, setCmsHeading] = useState('');
-  const [cmsDesc, setCmsDesc] = useState('');
-  const [cmsBannerTitle, setCmsBannerTitle] = useState('');
-  const [cmsBannerText, setCmsBannerText] = useState('');
 
   useEffect(() => {
     if (!isAuthenticated) {
       navigate('/login');
       return;
     }
-    if (user?.role !== 'SUPER_ADMIN') {
-      navigate('/');
+    if (user && user.role !== 'SUPER_ADMIN') {
+      navigate(user.role === 'CLUB_ADMIN' ? '/club-admin' : '/student');
       return;
     }
     fetchPlatformData();
   }, [isAuthenticated, user?.role]);
 
-  useEffect(() => {
-    const handleDocumentClick = (event: MouseEvent) => {
-      if (operationsMenuRef.current && !operationsMenuRef.current.contains(event.target as Node)) {
-        setShowOperationsMenu(false);
-      }
-    };
-    const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setShowOperationsMenu(false);
-    };
-    document.addEventListener('mousedown', handleDocumentClick);
-    document.addEventListener('keydown', handleEscape);
-    return () => {
-      document.removeEventListener('mousedown', handleDocumentClick);
-      document.removeEventListener('keydown', handleEscape);
-    };
-  }, []);
-
   const fetchPlatformData = async () => {
-    setStatsLoading(true);
-    setStatsError(null);
-    setDataError(null);
     try {
-      const [statsRes, clubsRes, usersRes, auditRes, cmsRes, announcementsRes, eventsRes] = await Promise.all([
-        apiClient.get('/stats/platform'),
-        apiClient.get('/admin/clubs'),
-        apiClient.get('/admin/users'),
-        apiClient.get('/admin/audit-logs'),
-        apiClient.get('/cms/public'),
-        apiClient.get('/admin/announcements'),
-        apiClient.get('/admin/events'),
+      setStatsLoading(true);
+      const [statsData, clubsData, usersData, evtsData, annsData, logsData] = await Promise.all([
+        getPlatformStats(),
+        getAllClubs(),
+        getAllUsers(),
+        getAllEvents(),
+        getAllAnnouncements(),
+        getAuditLogs(),
       ]);
 
-      if (statsRes.data?.data) {
-        setStats(statsRes.data.data);
-      } else {
-        throw new Error('The platform statistics response was empty.');
+      setStats(statsData);
+      setClubs(clubsData);
+      setUsers(usersData);
+      setEvents(evtsData);
+      setAnnouncements(annsData);
+      setAuditLogs(logsData);
+
+      if (clubsData.length > 0 && !targetClubId) {
+        setTargetClubId(clubsData[0].id);
       }
-      if (clubsRes.data?.data) {
-        setClubs(clubsRes.data.data);
-        if (clubsRes.data.data.length > 0) {
-          setTargetClubId(clubsRes.data.data[0].id);
-        }
+      if (usersData.length > 0 && !selectedUserForRole) {
+        setSelectedUserForRole(usersData[0]);
       }
-      if (usersRes.data?.data) {
-        setUsers(usersRes.data.data);
-        // Default target user for the Role Quick Action (Michael Torres or first student)
-        setSelectedUserForRole(usersRes.data.data[0] || null);
-      }
-      if (auditRes.data?.data) setAuditLogs(auditRes.data.data);
-      if (announcementsRes.data?.data) setAnnouncements(announcementsRes.data.data);
-      if (eventsRes.data?.data) setEvents(eventsRes.data.data);
-      if (cmsRes.data?.data) {
-        const c = cmsRes.data.data;
-        setCmsSiteName(c.siteName);
-        setCmsHeading(c.heroHeading);
-        setCmsDesc(c.heroDescription);
-        setCmsBannerTitle(c.noticeBannerTitle);
-        setCmsBannerText(c.noticeBannerText);
-      }
-    } catch (error: any) {
-      setStatsError(error.response?.data?.message || 'Platform statistics could not be loaded.');
-      setDataError(error.response?.data?.message || 'Some administrator data could not be loaded.');
+    } catch (err: any) {
+      console.warn('Error loading admin platform data:', err);
     } finally {
       setStatsLoading(false);
     }
   };
 
-  const handleDeleteUser = (targetUser: User) => {
-    setConfirmDialog({
-      title: 'Confirm User Deletion',
-      message: `Are you sure you want to delete ${targetUser.fullName}'s account? This action cannot be undone.`,
-      actionLabel: 'Delete User',
-      onConfirm: async () => {
-        try {
-          await apiClient.delete(`/admin/users/${targetUser.id}`);
-          setToastMessage(`User ${targetUser.fullName} deleted.`);
-          setConfirmDialog(null);
-          fetchPlatformData();
-        } catch (err: any) {
-          setToastMessage(err.response?.data?.message || 'Failed to delete user.');
-        }
-      },
-    });
-  };
-
-  const handleDeleteClub = (club: Club) => {
-    setConfirmDialog({
-      title: 'Confirm Club Deletion',
-      message: `Are you sure you want to delete ${club.name} and all associated records?`,
-      actionLabel: 'Delete Club',
-      onConfirm: async () => {
-        try {
-          await apiClient.delete(`/admin/clubs/${club.id}`);
-          setToastMessage(`Club ${club.name} deleted.`);
-          setConfirmDialog(null);
-          fetchPlatformData();
-        } catch (err: any) {
-          setToastMessage(err.response?.data?.message || 'Failed to delete club.');
-        }
-      },
-    });
-  };
-
-  const handleAnnouncementStatus = async (announcement: AnnouncementItem) => {
+  const handleApproveClub = async (clubId: string) => {
+    if (!user) return;
     try {
-      await apiClient.patch(`/admin/announcements/${announcement.id}/status`, { active: !announcement.isActive });
-      setToastMessage(`Announcement ${announcement.isActive ? 'deactivated' : 'activated'}.`);
-      fetchPlatformData();
+      await approveClub(clubId, { email: user.email, role: user.role });
+      setToastMessage('Club registration approved and published!');
+      await fetchPlatformData();
     } catch (err: any) {
-      setToastMessage(err.response?.data?.message || 'Failed to update announcement status.');
+      setToastMessage(err.message || 'Failed to approve club.');
     }
   };
 
-  const handleDeleteAnnouncement = (announcement: AnnouncementItem) => {
+  const handleRejectClub = async (clubId: string) => {
+    if (!user) return;
+    try {
+      await rejectClub(clubId, { email: user.email, role: user.role });
+      setToastMessage('Club registration rejected.');
+      await fetchPlatformData();
+    } catch (err: any) {
+      setToastMessage(err.message || 'Failed to reject club.');
+    }
+  };
+
+  const handleDeleteClub = (club: Club) => {
+    if (!user) return;
     setConfirmDialog({
-      title: 'Confirm Announcement Deletion',
-      message: `Are you sure you want to delete "${announcement.title}"?`,
-      actionLabel: 'Delete Announcement',
+      title: 'Confirm Club Deletion',
+      message: `Are you sure you want to delete ${club.name}? All associated memberships and events will be deleted.`,
+      actionLabel: 'Delete Club',
       onConfirm: async () => {
         try {
-          await apiClient.delete(`/admin/announcements/${announcement.id}`);
-          setToastMessage('Announcement deleted.');
+          await deleteClub(club.id, { email: user.email, role: user.role });
+          setToastMessage(`Club ${club.name} deleted.`);
           setConfirmDialog(null);
-          fetchPlatformData();
+          await fetchPlatformData();
         } catch (err: any) {
-          setToastMessage(err.response?.data?.message || 'Failed to delete announcement.');
+          setToastMessage(err.message || 'Failed to delete club.');
         }
       },
     });
+  };
+
+  const handleDeleteUser = (targetUser: User) => {
+    if (!user) return;
+    if (targetUser.id === user.id) {
+      setToastMessage('You cannot delete your own account.');
+      return;
+    }
+    setConfirmDialog({
+      title: 'Confirm User Deletion',
+      message: `Are you sure you want to remove ${targetUser.fullName}'s account from the platform?`,
+      actionLabel: 'Delete User',
+      onConfirm: async () => {
+        try {
+          await deleteUser(targetUser.id, { email: user.email, role: user.role });
+          setToastMessage(`User ${targetUser.fullName} deleted.`);
+          setConfirmDialog(null);
+          await fetchPlatformData();
+        } catch (err: any) {
+          setToastMessage(err.message || 'Failed to delete user.');
+        }
+      },
+    });
+  };
+
+  const handleToggleUserStatus = async (targetUser: User) => {
+    if (!user) return;
+    try {
+      await toggleUserStatus(targetUser.id, !targetUser.isActive, { email: user.email, role: user.role });
+      setToastMessage(`User ${targetUser.fullName} ${targetUser.isActive ? 'deactivated' : 'activated'}.`);
+      await fetchPlatformData();
+    } catch (err: any) {
+      setToastMessage(err.message || 'Failed to toggle account status.');
+    }
   };
 
   const handleRoleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedUserForRole) return;
+    if (!selectedUserForRole || !user) return;
     try {
-      await apiClient.put(`/admin/users/${selectedUserForRole.id}/role`, {
-        role: targetRole,
-        assignedClubId: targetRole === 'CLUB_ADMIN' ? targetClubId : null,
-      });
-      const selectedClubName =
-        clubs.find((c) => c.id === targetClubId)?.name || 'selected club';
-      setToastMessage(
-        `Updated ${selectedUserForRole.studentId || selectedUserForRole.fullName} to ${targetRole} for ${selectedClubName}`
+      await updateUserRole(
+        selectedUserForRole.id,
+        targetRole,
+        targetRole === 'CLUB_ADMIN' ? targetClubId : null,
+        { email: user.email, role: user.role }
       );
-      fetchPlatformData();
+      setToastMessage(`Updated role of ${selectedUserForRole.fullName} to ${targetRole}.`);
+      setShowRoleModal(false);
+      await fetchPlatformData();
     } catch (err: any) {
-      setToastMessage(err.response?.data?.message || 'Failed to update role.');
+      setToastMessage(err.message || 'Failed to update user role.');
     }
   };
 
-  const handleToggleUserStatus = async (targetUser: User) => {
-    try {
-      await apiClient.put(`/admin/users/${targetUser.id}/status`, {
-        active: !targetUser.isActive,
-      });
-      setToastMessage(
-        `User ${targetUser.fullName} ${targetUser.isActive ? 'deactivated' : 'activated'}.`
-      );
-      fetchPlatformData();
-    } catch (err: any) {
-      setToastMessage(err.response?.data?.message || 'Failed to toggle account status.');
-    }
-  };
-
-  const handleCreateClub = async (e: React.FormEvent) => {
+  const handleCreateClubSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!user) return;
     try {
-      await apiClient.post('/admin/clubs', {
-        name: newClubName,
-        category: newClubCat,
-        description: newClubDesc,
-        meetingSchedule: newClubSchedule,
-        meetingLocation: newClubLocation,
-        published: true,
-      });
-      setToastMessage('New club successfully created and published.');
+      const created = await registerClub(
+        {
+          name: newClubName.trim(),
+          category: newClubCat,
+          description: newClubDesc.trim(),
+          meetingSchedule: newClubSchedule.trim() || undefined,
+          meetingLocation: newClubLocation.trim() || undefined,
+          facultyAdvisor: newClubAdvisor.trim() || undefined,
+          contactEmail: newClubEmail.trim() || user.email,
+          logoUrl: newClubLogoUrl || undefined,
+        },
+        { email: user.email, role: user.role }
+      );
+      // As Super Admin, auto-approve immediately
+      await approveClub(created.id, { email: user.email, role: user.role });
+
+      setToastMessage(`Club "${newClubName}" created and approved.`);
       setShowCreateClubModal(false);
       setNewClubName('');
       setNewClubDesc('');
-      fetchPlatformData();
+      setNewClubSchedule('');
+      setNewClubLocation('');
+      setNewClubAdvisor('');
+      setNewClubEmail('');
+      setNewClubLogoUrl('');
+      await fetchPlatformData();
     } catch (err: any) {
-      setToastMessage(err.response?.data?.message || 'Failed to create club.');
+      setToastMessage(err.message || 'Failed to create club.');
     }
   };
 
-  const handleSaveCms = async (e: React.FormEvent) => {
+  const handleCreateEventSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!user) return;
     try {
-      await apiClient.put('/admin/cms', {
-        siteName: cmsSiteName,
-        heroHeading: cmsHeading,
-        heroDescription: cmsDesc,
-        noticeBannerTitle: cmsBannerTitle,
-        noticeBannerText: cmsBannerText,
-      });
-      setToastMessage('Landing page CMS successfully updated and persisted.');
-      setShowCmsModal(false);
-      fetchPlatformData();
-    } catch (err: any) {
-      setToastMessage(err.response?.data?.message || 'Failed to update CMS.');
-    }
-  };
+      await createEvent(
+        {
+          clubId: newEventClubId || null,
+          title: newEventTitle.trim(),
+          description: newEventDescription.trim() || undefined,
+          eventDate: newEventDate.trim(),
+          location: newEventLocation.trim(),
+          eventLink: newEventLink.trim() || undefined,
+          capacity: Number(newEventCapacity) || 100,
+          posterUrl: newEventPosterUrl || undefined,
+          isPlatformEvent: !newEventClubId,
+          badgeLabel: newEventClubId ? 'Club Event' : 'Campus Platform',
+          isPublished: true,
+        },
+        { id: user.id, email: user.email, role: user.role }
+      );
 
-  const handleCreateEvent = async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      await apiClient.post('/admin/events', {
-        title: newEventTitle,
-        description: newEventDescription,
-        eventDate: newEventDate,
-        location: newEventLocation,
-        eventLink: newEventLink,
-        capacity: Number(newEventCapacity),
-        clubId: newEventClubId || null,
-        published: true,
-        platformEvent: !newEventClubId,
-      });
-      setToastMessage('Event created and published successfully.');
+      setToastMessage('Event created and published.');
       setShowCreateEventModal(false);
       setNewEventTitle('');
       setNewEventDescription('');
@@ -318,86 +278,94 @@ export const SuperAdminDashboard: React.FC = () => {
       setNewEventLink('');
       setNewEventCapacity('100');
       setNewEventClubId('');
-      fetchPlatformData();
+      setNewEventPosterUrl('');
+      await fetchPlatformData();
     } catch (err: any) {
-      setToastMessage(err.response?.data?.message || 'Failed to create event.');
-    }
-  };
-
-  const handleCreateAnnouncement = async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      await apiClient.post('/admin/announcements', {
-        title: newAnnouncementTitle,
-        content: newAnnouncementContent,
-        postedByName: user?.fullName,
-      });
-      setToastMessage('Announcement published successfully.');
-      setShowAnnouncementModal(false);
-      setNewAnnouncementTitle('');
-      setNewAnnouncementContent('');
-      fetchPlatformData();
-    } catch (err: any) {
-      setToastMessage(err.response?.data?.message || 'Failed to publish announcement.');
-    }
-  };
-
-  const handleSaveAnnouncement = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editingAnnouncement) return;
-    try {
-      await apiClient.put(`/admin/announcements/${editingAnnouncement.id}`, {
-        title: newAnnouncementTitle,
-        content: newAnnouncementContent,
-        postedByName: editingAnnouncement.postedByName,
-      });
-      setToastMessage('Announcement updated successfully.');
-      setEditingAnnouncement(null);
-      setNewAnnouncementTitle('');
-      setNewAnnouncementContent('');
-      fetchPlatformData();
-    } catch (err: any) {
-      setToastMessage(err.response?.data?.message || 'Failed to update announcement.');
-    }
-  };
-
-  const handleEventStatus = async (event: EventItem) => {
-    try {
-      await apiClient.put(`/admin/events/${event.id}`, {
-        title: event.title,
-        description: event.description,
-        eventDate: event.eventDate,
-        location: event.location,
-        eventLink: event.eventLink,
-        capacity: event.capacity,
-        clubId: event.clubId || null,
-        published: !event.isPublished,
-        platformEvent: event.isPlatformEvent,
-        badgeLabel: event.badgeLabel,
-      });
-      setToastMessage(`Event ${event.isPublished ? 'unpublished' : 'published'}.`);
-      fetchPlatformData();
-    } catch (err: any) {
-      setToastMessage(err.response?.data?.message || 'Failed to update event status.');
+      setToastMessage(err.message || 'Failed to create event.');
     }
   };
 
   const handleDeleteEvent = (event: EventItem) => {
+    if (!user) return;
     setConfirmDialog({
       title: 'Confirm Event Deletion',
-      message: `Are you sure you want to delete "${event.title}" and its registrations?`,
+      message: `Are you sure you want to delete "${event.title}"?`,
       actionLabel: 'Delete Event',
       onConfirm: async () => {
         try {
-          await apiClient.delete(`/admin/events/${event.id}`);
+          await deleteEvent(event.id, { email: user.email, role: user.role });
           setToastMessage('Event deleted.');
           setConfirmDialog(null);
-          fetchPlatformData();
+          await fetchPlatformData();
         } catch (err: any) {
-          setToastMessage(err.response?.data?.message || 'Failed to delete event.');
+          setToastMessage(err.message || 'Failed to delete event.');
         }
       },
     });
+  };
+
+  const handleToggleEventPublish = async (event: EventItem) => {
+    if (!user) return;
+    try {
+      await updateEvent(event.id, { isPublished: !event.isPublished }, { email: user.email, role: user.role });
+      setToastMessage(`Event ${event.isPublished ? 'unpublished' : 'published'}.`);
+      await fetchPlatformData();
+    } catch (err: any) {
+      setToastMessage(err.message || 'Failed to update event status.');
+    }
+  };
+
+  const handleCreateAnnouncementSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) return;
+    try {
+      await createAnnouncement(
+        {
+          title: newAnnouncementTitle.trim(),
+          content: newAnnouncementContent.trim(),
+          postedByName: 'Campus Administration',
+        },
+        { id: user.id, email: user.email, role: user.role }
+      );
+
+      setToastMessage('Campus bulletin broadcasted.');
+      setShowAnnouncementModal(false);
+      setNewAnnouncementTitle('');
+      setNewAnnouncementContent('');
+      await fetchPlatformData();
+    } catch (err: any) {
+      setToastMessage(err.message || 'Failed to publish bulletin.');
+    }
+  };
+
+  const handleDeleteAnnouncement = (ann: AnnouncementItem) => {
+    if (!user) return;
+    setConfirmDialog({
+      title: 'Confirm Announcement Deletion',
+      message: `Are you sure you want to delete "${ann.title}"?`,
+      actionLabel: 'Delete Announcement',
+      onConfirm: async () => {
+        try {
+          await deleteAnnouncement(ann.id, { email: user.email, role: user.role });
+          setToastMessage('Announcement deleted.');
+          setConfirmDialog(null);
+          await fetchPlatformData();
+        } catch (err: any) {
+          setToastMessage(err.message || 'Failed to delete announcement.');
+        }
+      },
+    });
+  };
+
+  const handleToggleAnnouncementStatus = async (ann: AnnouncementItem) => {
+    if (!user) return;
+    try {
+      await toggleAnnouncementStatus(ann.id, !ann.isActive, { email: user.email, role: user.role });
+      setToastMessage(`Announcement ${ann.isActive ? 'deactivated' : 'activated'}.`);
+      await fetchPlatformData();
+    } catch (err: any) {
+      setToastMessage(err.message || 'Failed to toggle status.');
+    }
   };
 
   const filteredClubs = clubs.filter((c) => {
@@ -405,7 +373,7 @@ export const SuperAdminDashboard: React.FC = () => {
     const matchesSearch =
       !searchClub ||
       c.name.toLowerCase().includes(searchClub.toLowerCase()) ||
-      c.refId?.toLowerCase().includes(searchClub.toLowerCase()) ||
+      c.refId.toLowerCase().includes(searchClub.toLowerCase()) ||
       (c.assignedAdminName && c.assignedAdminName.toLowerCase().includes(searchClub.toLowerCase()));
     return matchesCategory && matchesSearch;
   });
@@ -420,19 +388,20 @@ export const SuperAdminDashboard: React.FC = () => {
     );
   });
 
+  const pendingClubs = clubs.filter((c) => c.approvalStatus === 'PENDING');
+
   return (
-    <div className="bg-surface font-body-md text-body-md text-on-surface antialiased flex flex-col min-h-screen">
+    <div className="bg-surface font-body-md text-on-surface antialiased flex flex-col min-h-screen">
       <Header subtitle="Super Admin Portal" />
 
       <main className="flex-1 w-full pt-20 pb-24 md:pb-12 bg-surface px-4 sm:px-6 lg:px-8">
         <div className="mx-auto w-full max-w-7xl flex flex-col gap-6">
-
-          {/* Header Section with Title & Fast Action Buttons */}
+          {/* Header Banner */}
           <div className="bg-surface-container-lowest p-5 sm:p-6 rounded-2xl border border-border-default shadow-sm flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div className="flex flex-col gap-1">
               <div className="flex items-center gap-2">
                 <span className="font-label-caps text-label-caps uppercase tracking-wider text-primary font-bold text-[11px]">
-                  System Active Directory
+                  System Directory
                 </span>
                 <span className="inline-flex items-center gap-1 text-xs bg-surface-container text-primary font-semibold px-2 py-0.5 rounded-full border border-border-default">
                   <span className="w-1.5 h-1.5 rounded-full bg-primary"></span>
@@ -447,7 +416,7 @@ export const SuperAdminDashboard: React.FC = () => {
               </p>
             </div>
 
-            {/* Quick action buttons on banner */}
+            {/* Top Quick Actions */}
             <div className="flex items-center gap-2 flex-wrap shrink-0">
               <button
                 type="button"
@@ -476,7 +445,7 @@ export const SuperAdminDashboard: React.FC = () => {
             </div>
           </div>
 
-          {/* Platform Metrics: 4 Monochrome Counter Cards */}
+          {/* Platform Metrics (Actual counts from database) */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
             <button
               type="button"
@@ -484,14 +453,14 @@ export const SuperAdminDashboard: React.FC = () => {
               className="bg-surface-container-lowest p-4 rounded-xl border border-border-default flex flex-col justify-between shadow-sm min-h-[5.5rem] text-left hover:border-black transition-colors"
             >
               <div className="flex items-center justify-between mb-1">
-                <span className="text-[10px] sm:text-[11px] font-bold text-secondary uppercase tracking-wider">Registered Users</span>
-                <span className="material-symbols-outlined text-secondary text-[18px]">badge</span>
+                <span className="text-[10px] sm:text-[11px] font-bold text-on-surface-variant uppercase tracking-wider">Registered Users</span>
+                <span className="material-symbols-outlined text-on-surface-variant text-[18px]">badge</span>
               </div>
               <div className="flex items-baseline gap-1.5 mt-2">
                 <span className="text-2xl sm:text-3xl text-primary font-bold tabular-nums">
-                  {statsLoading ? '...' : stats ? stats.totalUsers.toLocaleString() : '0'}
+                  {statsLoading ? '...' : stats ? stats.totalUsers : 0}
                 </span>
-                <span className="text-xs text-secondary">Accounts</span>
+                <span className="text-xs text-on-surface-variant">Accounts</span>
               </div>
             </button>
 
@@ -501,14 +470,14 @@ export const SuperAdminDashboard: React.FC = () => {
               className="bg-surface-container-lowest p-4 rounded-xl border border-border-default flex flex-col justify-between shadow-sm min-h-[5.5rem] text-left hover:border-black transition-colors"
             >
               <div className="flex items-center justify-between mb-1">
-                <span className="text-[10px] sm:text-[11px] font-bold text-secondary uppercase tracking-wider">Registered Clubs</span>
-                <span className="material-symbols-outlined text-secondary text-[18px]">account_tree</span>
+                <span className="text-[10px] sm:text-[11px] font-bold text-on-surface-variant uppercase tracking-wider">Registered Clubs</span>
+                <span className="material-symbols-outlined text-on-surface-variant text-[18px]">account_tree</span>
               </div>
               <div className="flex items-baseline gap-1.5 mt-2">
                 <span className="text-2xl sm:text-3xl text-primary font-bold tabular-nums">
-                  {statsLoading ? '...' : stats ? stats.totalClubs.toLocaleString() : '0'}
+                  {statsLoading ? '...' : stats ? stats.totalClubs : 0}
                 </span>
-                <span className="text-xs text-secondary">Charters</span>
+                <span className="text-xs text-on-surface-variant">Approved</span>
               </div>
             </button>
 
@@ -518,14 +487,14 @@ export const SuperAdminDashboard: React.FC = () => {
               className="bg-surface-container-lowest p-4 rounded-xl border border-border-default flex flex-col justify-between shadow-sm min-h-[5.5rem] text-left hover:border-black transition-colors"
             >
               <div className="flex items-center justify-between mb-1">
-                <span className="text-[10px] sm:text-[11px] font-bold text-secondary uppercase tracking-wider">Published Events</span>
-                <span className="material-symbols-outlined text-secondary text-[18px]">event_available</span>
+                <span className="text-[10px] sm:text-[11px] font-bold text-on-surface-variant uppercase tracking-wider">Published Events</span>
+                <span className="material-symbols-outlined text-on-surface-variant text-[18px]">event_available</span>
               </div>
               <div className="flex items-baseline gap-1.5 mt-2">
                 <span className="text-2xl sm:text-3xl text-primary font-bold tabular-nums">
-                  {statsLoading ? '...' : stats ? stats.publishedEvents.toLocaleString() : '0'}
+                  {statsLoading ? '...' : stats ? stats.publishedEvents : 0}
                 </span>
-                <span className="text-xs text-secondary">Active</span>
+                <span className="text-xs text-on-surface-variant">Active</span>
               </div>
             </button>
 
@@ -535,52 +504,63 @@ export const SuperAdminDashboard: React.FC = () => {
               className="bg-surface-container-lowest p-4 rounded-xl border border-border-default flex flex-col justify-between shadow-sm min-h-[5.5rem] text-left hover:border-black transition-colors"
             >
               <div className="flex items-center justify-between mb-1">
-                <span className="text-[10px] sm:text-[11px] font-bold text-secondary uppercase tracking-wider">Total Registrations</span>
-                <span className="material-symbols-outlined text-secondary text-[18px]">how_to_reg</span>
+                <span className="text-[10px] sm:text-[11px] font-bold text-on-surface-variant uppercase tracking-wider">Total RSVPs</span>
+                <span className="material-symbols-outlined text-on-surface-variant text-[18px]">how_to_reg</span>
               </div>
               <div className="flex items-baseline gap-1.5 mt-2">
                 <span className="text-2xl sm:text-3xl text-primary font-bold tabular-nums">
-                  {statsLoading ? '...' : stats ? stats.totalRegistrations.toLocaleString() : '0'}
+                  {statsLoading ? '...' : stats ? stats.totalRegistrations : 0}
                 </span>
-                <span className="text-xs text-secondary">RSVPs</span>
+                <span className="text-xs text-on-surface-variant">Registrations</span>
               </div>
             </button>
           </div>
 
-          {statsError && (
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border-default bg-surface-container p-4 text-sm">
-              <p className="text-secondary">{statsError}</p>
-              <button type="button" onClick={fetchPlatformData} className="rounded-lg bg-primary px-3 py-1.5 font-semibold text-on-primary text-xs">
-                Retry
+          {/* Pending Club Approvals Notification Banner */}
+          {pendingClubs.length > 0 && (
+            <div className="p-4 bg-surface-container-low border border-border-default rounded-2xl flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 shadow-sm">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-surface-container flex items-center justify-center text-primary font-bold shrink-0 border border-border-default">
+                  <span className="material-symbols-outlined text-[20px]">hourglass_top</span>
+                </div>
+                <div>
+                  <h3 className="font-semibold text-sm text-on-surface">
+                    {pendingClubs.length} Pending Club Registration{pendingClubs.length > 1 ? 's' : ''} Require Approval
+                  </h3>
+                  <p className="text-xs text-on-surface-variant">
+                    Review and approve submitted club charters before they appear in the public student directory.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setActiveTab('clubs')}
+                className="h-8 px-4 rounded-lg bg-primary text-on-primary text-xs font-semibold hover:opacity-90 shrink-0 self-start sm:self-auto"
+              >
+                Review Submissions
               </button>
             </div>
           )}
-          {dataError && dataError !== statsError && (
-            <div className="rounded-xl border border-border-default bg-surface-container p-4 text-sm text-secondary">
-              {dataError}
-            </div>
-          )}
 
-          {/* Responsive Navigation Tab Bar */}
+          {/* Navigation Tab Bar */}
           <div className="border-b border-border-default flex items-center gap-1 overflow-x-auto no-scrollbar py-1">
             {[
-              { id: 'overview', label: 'Overview & Status', icon: 'space_dashboard' },
+              { id: 'overview', label: 'Overview', icon: 'space_dashboard' },
               { id: 'clubs', label: `Clubs (${clubs.length})`, icon: 'account_tree' },
               { id: 'users', label: `Users (${users.length})`, icon: 'group' },
               { id: 'events', label: `Events (${events.length})`, icon: 'event' },
-              { id: 'announcements', label: `Announcements (${announcements.length})`, icon: 'campaign' },
+              { id: 'announcements', label: `Bulletins (${announcements.length})`, icon: 'campaign' },
               { id: 'roles', label: 'Role Governance', icon: 'security' },
               { id: 'audit', label: `Audit Trail (${auditLogs.length})`, icon: 'history' },
-              { id: 'cms', label: 'Landing CMS', icon: 'web' },
             ].map((tab) => (
               <button
                 key={tab.id}
                 type="button"
                 onClick={() => setActiveTab(tab.id as any)}
-                className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs sm:text-sm font-medium whitespace-nowrap transition-colors ${
+                className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs sm:text-sm font-medium whitespace-nowrap transition-colors border ${
                   activeTab === tab.id
-                    ? 'bg-primary text-on-primary font-semibold shadow-sm'
-                    : 'text-secondary hover:text-primary hover:bg-surface-container'
+                    ? 'bg-primary text-on-primary border-primary font-semibold shadow-sm'
+                    : 'bg-transparent text-on-surface-variant border-transparent hover:text-on-surface hover:bg-surface-container'
                 }`}
               >
                 <span className="material-symbols-outlined text-[16px]">{tab.icon}</span>
@@ -592,16 +572,16 @@ export const SuperAdminDashboard: React.FC = () => {
           {/* TAB 1: OVERVIEW */}
           {activeTab === 'overview' && (
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-              {/* Left Column (8 cols): Clubs & Events Overview */}
+              {/* Left Column (8 cols): Clubs & Events */}
               <div className="lg:col-span-8 flex flex-col gap-6">
-                {/* Registered Clubs Overview */}
+                {/* Clubs Ledger */}
                 <section className="bg-surface-container-lowest rounded-2xl border border-border-default p-5 sm:p-6 shadow-sm flex flex-col gap-4">
                   <div className="flex items-center justify-between pb-3 border-b border-border-default">
                     <div>
-                      <h2 className="text-base sm:text-lg text-primary font-bold">
+                      <h2 className="text-base sm:text-lg text-on-surface font-semibold">
                         Institutional Clubs Ledger
                       </h2>
-                      <p className="text-xs text-secondary">
+                      <p className="text-xs text-on-surface-variant">
                         Charter verification &amp; officer assignments
                       </p>
                     </div>
@@ -614,62 +594,94 @@ export const SuperAdminDashboard: React.FC = () => {
                     </button>
                   </div>
 
-                  <div className="flex flex-col gap-3">
-                    {clubs.slice(0, 4).map((clubItem) => {
-                      const isUnassigned = !clubItem.assignedAdminId;
-                      return (
+                  {clubs.length === 0 ? (
+                    <p className="text-xs text-on-surface-variant py-6 text-center">
+                      No clubs registered yet. Register a club using the button above.
+                    </p>
+                  ) : (
+                    <div className="flex flex-col gap-3">
+                      {clubs.slice(0, 5).map((clubItem) => (
                         <div
                           key={clubItem.id}
                           className="bg-surface-container-low p-4 rounded-xl border border-border-default flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"
                         >
-                          <div className="flex flex-col min-w-0">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className="font-semibold text-sm sm:text-base text-primary truncate">
-                                {clubItem.name}
-                              </span>
-                              <span className="bg-surface-container text-primary text-[10px] uppercase font-semibold px-2 py-0.5 rounded border border-border-default">
-                                {clubItem.category}
+                          <div className="flex items-start gap-3 min-w-0">
+                            {clubItem.logoUrl ? (
+                              <div className="w-10 h-10 rounded-lg overflow-hidden border border-border-default shrink-0 bg-surface-container">
+                                <img src={clubItem.logoUrl} alt={clubItem.name} className="w-full h-full object-cover" />
+                              </div>
+                            ) : (
+                              <div className="w-10 h-10 rounded-lg bg-surface-container flex items-center justify-center text-primary font-bold shrink-0 border border-border-default text-xs">
+                                {clubItem.name.charAt(0).toUpperCase()}
+                              </div>
+                            )}
+
+                            <div className="flex flex-col min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-semibold text-sm text-on-surface truncate">
+                                  {clubItem.name}
+                                </span>
+                                <span
+                                  className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded border ${
+                                    clubItem.approvalStatus === 'APPROVED'
+                                      ? 'bg-surface-container text-primary border-border-default'
+                                      : clubItem.approvalStatus === 'PENDING'
+                                      ? 'bg-surface text-primary border-black font-semibold'
+                                      : 'bg-surface-container-high text-on-surface border-border-default'
+                                  }`}
+                                >
+                                  {clubItem.approvalStatus}
+                                </span>
+                              </div>
+                              <span className="text-xs text-on-surface-variant mt-0.5">
+                                Ref: {clubItem.refId} • Officer: {clubItem.assignedAdminName || 'Unassigned'} • {clubItem.memberCount} members
                               </span>
                             </div>
-                            <span className="text-xs text-secondary mt-0.5">
-                              Charter: {clubItem.refId} • Officer: {isUnassigned ? 'Unassigned' : clubItem.assignedAdminName} • {clubItem.memberCount} members
-                            </span>
                           </div>
 
                           <div className="flex items-center gap-2 pt-2 sm:pt-0 border-t sm:border-t-0 border-border-default shrink-0">
+                            {clubItem.approvalStatus === 'PENDING' && (
+                              <button
+                                type="button"
+                                onClick={() => handleApproveClub(clubItem.id)}
+                                className="h-8 px-3 rounded-lg bg-primary text-on-primary text-xs font-semibold hover:opacity-90 shadow-sm"
+                              >
+                                Approve
+                              </button>
+                            )}
                             <button
                               type="button"
                               onClick={() => {
                                 setTargetClubId(clubItem.id);
                                 setActiveTab('roles');
                               }}
-                              className="h-8 px-3 rounded-lg bg-surface-container text-xs font-medium text-primary hover:bg-surface-container-high transition-colors border border-border-default"
+                              className="h-8 px-3 rounded-lg bg-surface-container text-xs font-medium text-on-surface hover:bg-surface-container-high transition-colors border border-border-default"
                             >
-                              {isUnassigned ? 'Assign Admin' : 'Change Officer'}
+                              Assign Admin
                             </button>
                             <button
                               type="button"
                               onClick={() => handleDeleteClub(clubItem)}
-                              className="h-8 px-2.5 rounded-lg text-xs text-secondary hover:text-primary transition-colors underline"
+                              className="h-8 px-2 text-xs text-on-surface-variant hover:text-primary underline"
                             >
                               Delete
                             </button>
                           </div>
                         </div>
-                      );
-                    })}
-                  </div>
+                      ))}
+                    </div>
+                  )}
                 </section>
 
-                {/* Published Platform Events */}
+                {/* Platform Events */}
                 <section className="bg-surface-container-lowest rounded-2xl border border-border-default p-5 sm:p-6 shadow-sm flex flex-col gap-4">
                   <div className="flex items-center justify-between pb-3 border-b border-border-default">
                     <div>
-                      <h2 className="text-base sm:text-lg text-primary font-bold">
-                        Platform &amp; Club Events
+                      <h2 className="text-base sm:text-lg text-on-surface font-semibold">
+                        Campus Events Schedule
                       </h2>
-                      <p className="text-xs text-secondary">
-                        Active student registrations &amp; campus scheduling
+                      <p className="text-xs text-on-surface-variant">
+                        Moderation and registration monitoring
                       </p>
                     </div>
                     <button
@@ -681,55 +693,61 @@ export const SuperAdminDashboard: React.FC = () => {
                     </button>
                   </div>
 
-                  <div className="flex flex-col gap-3">
-                    {events.slice(0, 4).map((event) => (
-                      <div
-                        key={event.id}
-                        className="bg-surface-container-low p-4 rounded-xl border border-border-default flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"
-                      >
-                        <div className="flex flex-col min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="font-semibold text-sm sm:text-base text-primary truncate">
-                              {event.title}
-                            </span>
-                            <span className="bg-surface-container text-primary text-[10px] uppercase font-semibold px-2 py-0.5 rounded border border-border-default">
-                              {event.isPublished ? 'Published' : 'Draft'}
+                  {events.length === 0 ? (
+                    <p className="text-xs text-on-surface-variant py-6 text-center">
+                      No events scheduled yet.
+                    </p>
+                  ) : (
+                    <div className="flex flex-col gap-3">
+                      {events.slice(0, 4).map((evt) => (
+                        <div
+                          key={evt.id}
+                          className="bg-surface-container-low p-4 rounded-xl border border-border-default flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"
+                        >
+                          <div className="flex flex-col min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-semibold text-sm text-on-surface truncate">
+                                {evt.title}
+                              </span>
+                              <span className="bg-surface-container text-primary text-[10px] uppercase font-bold px-2 py-0.5 rounded border border-border-default">
+                                {evt.isPublished ? 'Published' : 'Unpublished'}
+                              </span>
+                            </div>
+                            <span className="text-xs text-on-surface-variant mt-0.5">
+                              {evt.eventDate} • {evt.location} • {evt.registeredCount}/{evt.capacity} registered
                             </span>
                           </div>
-                          <span className="text-xs text-secondary mt-0.5">
-                            {event.eventDate} • {event.location} • {event.registeredCount}/{event.capacity} registered
-                          </span>
-                        </div>
 
-                        <div className="flex items-center gap-2 pt-2 sm:pt-0 border-t sm:border-t-0 border-border-default shrink-0">
-                          <button
-                            type="button"
-                            onClick={() => handleEventStatus(event)}
-                            className="h-8 px-3 rounded-lg bg-surface-container text-xs font-medium text-primary hover:bg-surface-container-high transition-colors border border-border-default"
-                          >
-                            {event.isPublished ? 'Unpublish' : 'Publish'}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteEvent(event)}
-                            className="h-8 px-2.5 rounded-lg text-xs text-secondary hover:text-primary transition-colors underline"
-                          >
-                            Delete
-                          </button>
+                          <div className="flex items-center gap-2 pt-2 sm:pt-0 border-t sm:border-t-0 border-border-default shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => handleToggleEventPublish(evt)}
+                              className="h-8 px-3 rounded-lg bg-surface-container text-xs font-medium text-on-surface hover:bg-surface-container-high transition-colors border border-border-default"
+                            >
+                              {evt.isPublished ? 'Unpublish' : 'Publish'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteEvent(evt)}
+                              className="h-8 px-2 text-xs text-on-surface-variant hover:text-primary underline"
+                            >
+                              Delete
+                            </button>
+                          </div>
                         </div>
-                      </div>
-                    ))}
-                  </div>
+                      ))}
+                    </div>
+                  )}
                 </section>
               </div>
 
-              {/* Right Column (4 cols): Action Center & Audit Trail */}
+              {/* Right Column (4 cols): Quick Operations & Audit Trail */}
               <div className="lg:col-span-4 flex flex-col gap-6">
                 {/* Governance Quick Action Center */}
                 <div className="bg-surface-container-lowest rounded-2xl border border-border-default p-5 shadow-sm flex flex-col gap-3">
                   <div className="flex items-center gap-2 pb-3 border-b border-border-default">
                     <span className="material-symbols-outlined text-[20px] text-primary">admin_panel_settings</span>
-                    <h2 className="text-base text-primary font-semibold">
+                    <h2 className="text-base text-on-surface font-semibold">
                       Administrative Actions
                     </h2>
                   </div>
@@ -746,7 +764,7 @@ export const SuperAdminDashboard: React.FC = () => {
                     <button
                       type="button"
                       onClick={() => setShowCreateEventModal(true)}
-                      className="w-full h-9 rounded-lg bg-surface-container text-primary text-xs font-semibold hover:bg-surface-container-high transition-colors border border-border-default flex items-center justify-center gap-1.5"
+                      className="w-full h-9 rounded-lg bg-surface-container text-on-surface text-xs font-semibold hover:bg-surface-container-high transition-colors border border-border-default flex items-center justify-center gap-1.5"
                     >
                       <span className="material-symbols-outlined text-[16px]">event</span>
                       <span>Create Platform Event</span>
@@ -754,7 +772,7 @@ export const SuperAdminDashboard: React.FC = () => {
                     <button
                       type="button"
                       onClick={() => setShowAnnouncementModal(true)}
-                      className="w-full h-9 rounded-lg bg-surface-container text-primary text-xs font-semibold hover:bg-surface-container-high transition-colors border border-border-default flex items-center justify-center gap-1.5"
+                      className="w-full h-9 rounded-lg bg-surface-container text-on-surface text-xs font-semibold hover:bg-surface-container-high transition-colors border border-border-default flex items-center justify-center gap-1.5"
                     >
                       <span className="material-symbols-outlined text-[16px]">campaign</span>
                       <span>Broadcast Campus Notice</span>
@@ -762,18 +780,10 @@ export const SuperAdminDashboard: React.FC = () => {
                     <button
                       type="button"
                       onClick={() => setActiveTab('roles')}
-                      className="w-full h-9 rounded-lg bg-surface-container text-primary text-xs font-semibold hover:bg-surface-container-high transition-colors border border-border-default flex items-center justify-center gap-1.5"
+                      className="w-full h-9 rounded-lg bg-surface-container text-on-surface text-xs font-semibold hover:bg-surface-container-high transition-colors border border-border-default flex items-center justify-center gap-1.5"
                     >
                       <span className="material-symbols-outlined text-[16px]">security</span>
                       <span>Manage User Roles</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setActiveTab('cms')}
-                      className="w-full h-9 rounded-lg bg-surface-container text-primary text-xs font-semibold hover:bg-surface-container-high transition-colors border border-border-default flex items-center justify-center gap-1.5"
-                    >
-                      <span className="material-symbols-outlined text-[16px]">edit_note</span>
-                      <span>Edit Landing Page CMS</span>
                     </button>
                   </div>
                 </div>
@@ -783,7 +793,7 @@ export const SuperAdminDashboard: React.FC = () => {
                   <div className="flex items-center justify-between pb-3 border-b border-border-default">
                     <div className="flex items-center gap-2">
                       <span className="material-symbols-outlined text-[20px] text-primary">history</span>
-                      <h2 className="text-base text-primary font-semibold">
+                      <h2 className="text-base text-on-surface font-semibold">
                         Audit Trail Excerpt
                       </h2>
                     </div>
@@ -796,36 +806,42 @@ export const SuperAdminDashboard: React.FC = () => {
                     </button>
                   </div>
 
-                  <div className="flex flex-col gap-3">
-                    {auditLogs.slice(0, 4).map((log) => (
-                      <div key={log.id} className="text-xs p-3 rounded-xl bg-surface-container-low border border-border-default flex flex-col gap-1">
-                        <div className="flex justify-between items-center text-primary font-semibold">
-                          <span className="truncate">{log.actionType}</span>
-                          <span className="text-[11px] text-secondary whitespace-nowrap">
-                            {new Date(log.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  {auditLogs.length === 0 ? (
+                    <p className="text-xs text-on-surface-variant py-4 text-center">
+                      No audit events recorded yet.
+                    </p>
+                  ) : (
+                    <div className="flex flex-col gap-2.5">
+                      {auditLogs.slice(0, 4).map((log) => (
+                        <div key={log.id} className="text-xs p-3 rounded-xl bg-surface-container-low border border-border-default flex flex-col gap-1">
+                          <div className="flex justify-between items-center text-on-surface font-semibold">
+                            <span className="truncate">{log.actionType}</span>
+                            <span className="text-[10px] text-on-surface-variant">
+                              {new Date(log.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                          </div>
+                          <p className="text-on-surface-variant line-clamp-2 leading-relaxed">
+                            {log.details}
+                          </p>
+                          <span className="text-[10px] text-on-surface-variant truncate">
+                            {log.actorEmail} • {log.actorRole}
                           </span>
                         </div>
-                        <p className="text-on-surface line-clamp-2 leading-relaxed">
-                          {log.details}
-                        </p>
-                        <span className="text-[10px] text-secondary mt-0.5 truncate">
-                          {log.actorEmail} • IP: {log.ipAddress}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
           )}
 
-          {/* TAB 2: CLUBS DIRECTORY */}
+          {/* TAB 2: CLUBS */}
           {activeTab === 'clubs' && (
             <div className="bg-surface-container-lowest rounded-2xl border border-border-default p-5 sm:p-6 shadow-sm flex flex-col gap-4">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-3 border-b border-border-default">
                 <div>
-                  <h2 className="text-lg text-primary font-bold">Campus Clubs Directory</h2>
-                  <p className="text-xs text-secondary">All recognized student organizations</p>
+                  <h2 className="text-lg font-bold text-on-surface">Campus Clubs Management</h2>
+                  <p className="text-xs text-on-surface-variant">Review approvals, assignments, and charter records</p>
                 </div>
                 <button
                   type="button"
@@ -836,10 +852,10 @@ export const SuperAdminDashboard: React.FC = () => {
                 </button>
               </div>
 
-              {/* Search & Filter Controls */}
+              {/* Search & Filter */}
               <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between">
                 <div className="relative flex-1">
-                  <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-secondary text-[18px]">
+                  <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-[18px]">
                     search
                   </span>
                   <input
@@ -847,12 +863,12 @@ export const SuperAdminDashboard: React.FC = () => {
                     placeholder="Search clubs by name, ref ID, or officer..."
                     value={searchClub}
                     onChange={(e) => setSearchClub(e.target.value)}
-                    className="w-full bg-surface-container-low text-on-surface text-sm pl-10 pr-3 py-2 rounded-xl border border-border-default focus:outline-none focus:border-black"
+                    className="w-full bg-surface-container-low text-on-surface text-xs sm:text-sm pl-10 pr-3 py-2 rounded-xl border border-border-default focus:outline-none focus:border-black"
                   />
                 </div>
 
                 <div className="flex items-center gap-1 overflow-x-auto no-scrollbar py-0.5">
-                  {['All', 'Academic', 'Humanities', 'Engineering', 'Sports', 'Arts'].map((cat) => (
+                  {['All', 'Academic', 'Humanities', 'Engineering', 'Sports', 'Creative'].map((cat) => (
                     <button
                       key={cat}
                       type="button"
@@ -860,7 +876,7 @@ export const SuperAdminDashboard: React.FC = () => {
                       className={`text-xs px-3 py-1.5 rounded-lg border transition-colors whitespace-nowrap ${
                         categoryFilter === cat
                           ? 'bg-primary text-on-primary border-primary font-semibold'
-                          : 'bg-surface-container text-secondary border-border-default hover:text-primary'
+                          : 'bg-surface-container text-on-surface-variant border-border-default hover:text-on-surface'
                       }`}
                     >
                       {cat}
@@ -869,151 +885,102 @@ export const SuperAdminDashboard: React.FC = () => {
                 </div>
               </div>
 
-              {/* Responsive Clubs Grid */}
+              {/* Clubs Grid */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-1">
                 {filteredClubs.length === 0 ? (
-                  <div className="col-span-full py-12 text-center text-secondary">
+                  <div className="col-span-full py-12 text-center text-xs text-on-surface-variant">
                     No clubs match the search criteria.
                   </div>
                 ) : (
-                  filteredClubs.map((clubItem) => {
-                    const isUnassigned = !clubItem.assignedAdminId;
-                    return (
-                      <div
-                        key={clubItem.id}
-                        className="p-4 rounded-xl border border-border-default bg-surface-container-low flex flex-col justify-between gap-3"
-                      >
-                        <div className="flex flex-col gap-1.5">
-                          <div className="flex items-start justify-between gap-2">
-                            <span className="font-bold text-base text-primary truncate">
-                              {clubItem.name}
-                            </span>
-                            <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-surface-container text-primary border border-border-default shrink-0">
-                              {clubItem.category}
-                            </span>
+                  filteredClubs.map((clubItem) => (
+                    <div
+                      key={clubItem.id}
+                      className="p-4 rounded-xl border border-border-default bg-surface-container-low flex flex-col justify-between gap-3"
+                    >
+                      <div className="flex flex-col gap-2">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            {clubItem.logoUrl ? (
+                              <div className="w-10 h-10 rounded-lg overflow-hidden border border-border-default bg-surface-container shrink-0">
+                                <img src={clubItem.logoUrl} alt={clubItem.name} className="w-full h-full object-cover" />
+                              </div>
+                            ) : (
+                              <div className="w-10 h-10 rounded-lg bg-surface-container flex items-center justify-center text-primary font-bold shrink-0 border border-border-default text-xs">
+                                {clubItem.name.charAt(0).toUpperCase()}
+                              </div>
+                            )}
+                            <div className="min-w-0">
+                              <span className="font-bold text-sm sm:text-base text-on-surface truncate block">
+                                {clubItem.name}
+                              </span>
+                              <span className="text-[11px] text-on-surface-variant">
+                                Ref: {clubItem.refId} • {clubItem.memberCount} Members
+                              </span>
+                            </div>
                           </div>
-                          <span className="text-xs text-secondary">
-                            Charter: <span className="font-semibold text-primary">{clubItem.refId}</span> • {clubItem.memberCount} Members
+
+                          <span
+                            className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded border shrink-0 ${
+                              clubItem.approvalStatus === 'APPROVED'
+                                ? 'bg-surface-container text-primary border-border-default'
+                                : clubItem.approvalStatus === 'PENDING'
+                                ? 'bg-surface text-primary border-black font-semibold'
+                                : 'bg-surface-container-high text-on-surface border-border-default'
+                            }`}
+                          >
+                            {clubItem.approvalStatus}
                           </span>
-                          <span className="text-xs text-secondary">
-                            Officer: <span className="font-semibold text-primary">{isUnassigned ? 'Unassigned' : clubItem.assignedAdminName}</span>
-                          </span>
-                          {clubItem.description && (
-                            <p className="text-xs text-secondary line-clamp-2 mt-1">
-                              {clubItem.description}
-                            </p>
-                          )}
                         </div>
 
-                        <div className="flex items-center justify-between pt-2 border-t border-border-default text-xs">
+                        <p className="text-xs text-on-surface-variant line-clamp-2 leading-relaxed">
+                          {clubItem.description}
+                        </p>
+
+                        <div className="text-[11px] text-on-surface-variant flex flex-col gap-0.5">
+                          <span>Officer: <strong className="text-on-surface">{clubItem.assignedAdminName || 'Unassigned'}</strong></span>
+                          <span>Advisor: <strong className="text-on-surface">{clubItem.facultyAdvisor || 'Unassigned'}</strong></span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between pt-2 border-t border-border-default text-xs">
+                        <div className="flex items-center gap-2">
+                          {clubItem.approvalStatus === 'PENDING' && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => handleApproveClub(clubItem.id)}
+                                className="h-8 px-3 rounded-lg bg-primary text-on-primary text-xs font-semibold hover:opacity-90 shadow-sm"
+                              >
+                                Approve
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleRejectClub(clubItem.id)}
+                                className="h-8 px-3 rounded-lg bg-surface-container text-on-surface text-xs font-semibold hover:bg-surface-container-high border border-border-default"
+                              >
+                                Reject
+                              </button>
+                            </>
+                          )}
                           <button
                             type="button"
                             onClick={() => {
                               setTargetClubId(clubItem.id);
                               setActiveTab('roles');
                             }}
-                            className="font-semibold text-primary hover:underline"
+                            className="h-8 px-3 rounded-lg bg-surface-container text-xs font-medium text-on-surface hover:bg-surface-container-high transition-colors border border-border-default"
                           >
-                            {isUnassigned ? 'Assign Officer →' : 'Reassign Officer →'}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteClub(clubItem)}
-                            className="text-secondary hover:text-primary underline"
-                          >
-                            Delete
+                            Assign Officer
                           </button>
                         </div>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-            </div>
-          )}
 
-          {/* TAB 3: USER ACCOUNTS */}
-          {activeTab === 'users' && (
-            <div className="bg-surface-container-lowest rounded-2xl border border-border-default p-5 sm:p-6 shadow-sm flex flex-col gap-4">
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-3 border-b border-border-default">
-                <div>
-                  <h2 className="text-lg text-primary font-bold">User Accounts Directory</h2>
-                  <p className="text-xs text-secondary">{users.length} Registered institutional accounts</p>
-                </div>
-                <div className="relative w-full sm:w-64">
-                  <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-secondary text-[18px]">
-                    search
-                  </span>
-                  <input
-                    type="text"
-                    placeholder="Search users..."
-                    value={searchUser}
-                    onChange={(e) => setSearchUser(e.target.value)}
-                    className="w-full bg-surface-container-low text-on-surface text-xs pl-9 pr-3 py-1.5 rounded-lg border border-border-default focus:outline-none focus:border-black"
-                  />
-                </div>
-              </div>
-
-              <div className="flex flex-col gap-3">
-                {filteredUsers.length === 0 ? (
-                  <div className="py-12 text-center text-secondary">
-                    No users match the search query.
-                  </div>
-                ) : (
-                  filteredUsers.map((u) => (
-                    <div
-                      key={u.id}
-                      className="p-4 bg-surface-container-low border border-border-default rounded-xl flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"
-                    >
-                      <div className="flex items-start gap-3 min-w-0">
-                        <div className="w-9 h-9 rounded-lg bg-surface-container flex items-center justify-center text-primary font-bold text-xs shrink-0 border border-border-default">
-                          {u.fullName.charAt(0).toUpperCase()}
-                        </div>
-                        <div className="flex flex-col min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="font-semibold text-sm text-primary truncate">{u.fullName}</span>
-                            <span className="px-1.5 py-0.5 bg-surface-container text-[10px] font-bold rounded uppercase border border-border-default">
-                              {u.role}
-                            </span>
-                            <span className="text-[10px] text-secondary">
-                              {u.isVerified ? '✓ Verified' : 'Unverified'}
-                            </span>
-                          </div>
-                          <span className="text-xs text-secondary truncate mt-0.5">{u.email} • ID: {u.studentId || 'N/A'} • Dept: {u.department || 'N/A'}</span>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2 pt-2 sm:pt-0 border-t sm:border-t-0 border-border-default shrink-0">
                         <button
                           type="button"
-                          onClick={() => {
-                            setSelectedUserForRole(u);
-                            setActiveTab('roles');
-                          }}
-                          className="px-3 py-1.5 text-xs rounded-lg border border-border-default bg-surface-container text-primary font-medium hover:bg-surface-container-high transition-colors"
+                          onClick={() => handleDeleteClub(clubItem)}
+                          className="text-on-surface-variant hover:text-primary underline text-xs"
                         >
-                          Change Role
+                          Delete
                         </button>
-                        <button
-                          type="button"
-                          onClick={() => handleToggleUserStatus(u)}
-                          className={`px-3 py-1.5 text-xs rounded-lg border transition-colors ${
-                            u.isActive
-                              ? 'bg-surface-container text-primary border-border-default hover:bg-neutral-300'
-                              : 'bg-primary text-on-primary border-primary'
-                          }`}
-                        >
-                          {u.isActive ? 'Deactivate' : 'Activate'}
-                        </button>
-                        {u.role !== 'SUPER_ADMIN' && (
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteUser(u)}
-                            className="px-3 py-1.5 text-xs rounded-lg text-secondary hover:text-primary underline"
-                          >
-                            Delete
-                          </button>
-                        )}
                       </div>
                     </div>
                   ))
@@ -1022,13 +989,207 @@ export const SuperAdminDashboard: React.FC = () => {
             </div>
           )}
 
-          {/* TAB 4: CAMPUS EVENTS */}
+          {/* TAB 3: USERS */}
+          {activeTab === 'users' && (
+            <div className="bg-surface-container-lowest rounded-2xl border border-border-default p-5 sm:p-6 shadow-sm flex flex-col gap-4">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-3 border-b border-border-default">
+                <div>
+                  <h2 className="text-lg font-bold text-on-surface">Registered User Directory</h2>
+                  <p className="text-xs text-on-surface-variant">Accounts, role privileges, and active statuses</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('roles')}
+                  className="h-9 px-4 rounded-xl bg-primary text-on-primary text-xs font-semibold hover:opacity-90 self-start sm:self-auto shadow-sm"
+                >
+                  Manage Roles
+                </button>
+              </div>
+
+              {/* Search User */}
+              <div className="relative">
+                <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-[18px]">
+                  search
+                </span>
+                <input
+                  type="text"
+                  placeholder="Search users by name, college email, or student ID..."
+                  value={searchUser}
+                  onChange={(e) => setSearchUser(e.target.value)}
+                  className="w-full bg-surface-container-low text-on-surface text-xs sm:text-sm pl-10 pr-3 py-2 rounded-xl border border-border-default focus:outline-none focus:border-black"
+                />
+              </div>
+
+              {/* Users Mobile Card View (block sm:hidden) */}
+              <div className="block sm:hidden divide-y divide-border-default">
+                {filteredUsers.length === 0 ? (
+                  <p className="py-8 text-center text-xs text-on-surface-variant">
+                    No users found matching your search.
+                  </p>
+                ) : (
+                  filteredUsers.map((u) => (
+                    <div key={u.id} className="py-3.5 flex flex-col gap-2.5">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex flex-col min-w-0">
+                          <span className="font-semibold text-on-surface text-sm truncate">{u.fullName}</span>
+                          <span className="text-xs text-on-surface-variant truncate">{u.email}</span>
+                        </div>
+                        <span className="px-2 py-0.5 rounded text-[10px] uppercase font-bold bg-surface-container text-primary border border-border-default shrink-0">
+                          {u.role}
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-1 text-xs text-on-surface-variant bg-surface-container-low p-2.5 rounded-lg border border-border-default">
+                        <div>
+                          <span className="text-[10px] uppercase font-bold text-on-surface-variant block">ID</span>
+                          <span className="text-on-surface font-medium">{u.studentId || 'N/A'}</span>
+                        </div>
+                        <div>
+                          <span className="text-[10px] uppercase font-bold text-on-surface-variant block">Club</span>
+                          <span className="text-on-surface font-medium truncate block">{u.assignedClubName || 'None'}</span>
+                        </div>
+                        <div className="col-span-2 pt-1 flex items-center justify-between border-t border-border-default">
+                          <span className="text-[10px] uppercase font-bold text-on-surface-variant">Status</span>
+                          <span
+                            className={`inline-flex items-center gap-1 font-semibold text-xs ${
+                              u.isActive ? 'text-primary' : 'text-on-surface-variant'
+                            }`}
+                          >
+                            <span className={`w-1.5 h-1.5 rounded-full ${u.isActive ? 'bg-primary' : 'bg-on-surface-variant'}`}></span>
+                            {u.isActive ? 'Active' : 'Suspended'}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 pt-1">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedUserForRole(u);
+                            setTargetRole(u.role);
+                            if (u.assignedClubId) setTargetClubId(u.assignedClubId);
+                            setShowRoleModal(true);
+                          }}
+                          className="h-8 px-3 rounded-lg bg-surface-container text-on-surface text-xs font-semibold border border-border-default hover:bg-surface-container-high"
+                        >
+                          Edit Role
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleToggleUserStatus(u)}
+                          className="h-8 px-2.5 text-xs text-on-surface-variant hover:text-primary underline"
+                        >
+                          {u.isActive ? 'Suspend' : 'Activate'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteUser(u)}
+                          className="h-8 px-2.5 text-xs text-on-surface-variant hover:text-primary underline ml-auto"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              {/* Users Desktop Table View (hidden sm:block) */}
+              <div className="hidden sm:block overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead>
+                    <tr className="border-b border-border-default text-on-surface-variant uppercase font-bold text-[10px]">
+                      <th className="py-2.5 px-3">User</th>
+                      <th className="py-2.5 px-3">Student ID</th>
+                      <th className="py-2.5 px-3">Role</th>
+                      <th className="py-2.5 px-3">Assigned Club</th>
+                      <th className="py-2.5 px-3">Status</th>
+                      <th className="py-2.5 px-3 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border-default">
+                    {filteredUsers.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} className="py-8 text-center text-on-surface-variant">
+                          No users found.
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredUsers.map((u) => (
+                        <tr key={u.id} className="hover:bg-surface-container-low transition-colors">
+                          <td className="py-3 px-3">
+                            <div className="flex flex-col">
+                              <span className="font-semibold text-on-surface">{u.fullName}</span>
+                              <span className="text-[11px] text-on-surface-variant">{u.email}</span>
+                            </div>
+                          </td>
+                          <td className="py-3 px-3 text-on-surface tabular-nums">
+                            {u.studentId || 'N/A'}
+                          </td>
+                          <td className="py-3 px-3">
+                            <span className="px-2 py-0.5 rounded text-[10px] uppercase font-bold bg-surface-container text-primary border border-border-default">
+                              {u.role}
+                            </span>
+                          </td>
+                          <td className="py-3 px-3 text-on-surface truncate max-w-[150px]">
+                            {u.assignedClubName || 'None'}
+                          </td>
+                          <td className="py-3 px-3">
+                            <span
+                              className={`inline-flex items-center gap-1 text-[11px] font-semibold ${
+                                u.isActive ? 'text-primary' : 'text-on-surface-variant'
+                              }`}
+                            >
+                              <span className={`w-1.5 h-1.5 rounded-full ${u.isActive ? 'bg-primary' : 'bg-on-surface-variant'}`}></span>
+                              {u.isActive ? 'Active' : 'Suspended'}
+                            </span>
+                          </td>
+                          <td className="py-3 px-3 text-right">
+                            <div className="flex items-center justify-end gap-2">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSelectedUserForRole(u);
+                                  setTargetRole(u.role);
+                                  if (u.assignedClubId) setTargetClubId(u.assignedClubId);
+                                  setShowRoleModal(true);
+                                }}
+                                className="h-7 px-2.5 rounded bg-surface-container text-on-surface text-[11px] font-semibold border border-border-default hover:bg-surface-container-high"
+                              >
+                                Edit Role
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleToggleUserStatus(u)}
+                                className="h-7 px-2 text-[11px] text-on-surface-variant hover:text-primary underline"
+                              >
+                                {u.isActive ? 'Suspend' : 'Activate'}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteUser(u)}
+                                className="h-7 px-2 text-[11px] text-on-surface-variant hover:text-primary underline"
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 4: EVENTS */}
           {activeTab === 'events' && (
             <div className="bg-surface-container-lowest rounded-2xl border border-border-default p-5 sm:p-6 shadow-sm flex flex-col gap-4">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-3 border-b border-border-default">
                 <div>
-                  <h2 className="text-lg text-primary font-bold">Campus Events Management</h2>
-                  <p className="text-xs text-secondary">Institutional &amp; club event calendar records</p>
+                  <h2 className="text-lg font-bold text-on-surface">Campus Events Moderation</h2>
+                  <p className="text-xs text-on-surface-variant">Manage scheduled platform and club events</p>
                 </div>
                 <button
                   type="button"
@@ -1039,46 +1200,57 @@ export const SuperAdminDashboard: React.FC = () => {
                 </button>
               </div>
 
-              <div className="flex flex-col gap-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {events.length === 0 ? (
-                  <div className="py-12 text-center text-secondary">No platform events created yet.</div>
+                  <div className="col-span-full py-12 text-center text-xs text-on-surface-variant">
+                    No events scheduled yet.
+                  </div>
                 ) : (
-                  events.map((event) => (
+                  events.map((evt) => (
                     <div
-                      key={event.id}
-                      className="p-4 rounded-xl border border-border-default bg-surface-container-low flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"
+                      key={evt.id}
+                      className="p-4 rounded-xl border border-border-default bg-surface-container-low flex flex-col justify-between gap-3"
                     >
-                      <div className="flex flex-col min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-semibold text-sm sm:text-base text-primary truncate">
-                            {event.title}
-                          </span>
-                          <span className="px-2 py-0.5 rounded text-[10px] uppercase font-bold border border-border-default bg-surface-container">
-                            {event.isPublished ? 'Published' : 'Draft'}
+                      <div className="flex flex-col gap-2">
+                        {evt.posterUrl && (
+                          <div className="w-full h-32 rounded-lg overflow-hidden border border-border-default bg-surface-container">
+                            <img src={evt.posterUrl} alt={evt.title} className="w-full h-full object-cover" />
+                          </div>
+                        )}
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <h3 className="font-bold text-sm text-on-surface">{evt.title}</h3>
+                            <span className="text-xs text-on-surface-variant mt-0.5 block">
+                              {evt.eventDate} • {evt.location}
+                            </span>
+                          </div>
+                          <span className="px-2 py-0.5 rounded text-[10px] uppercase font-bold bg-surface-container text-primary border border-border-default shrink-0">
+                            {evt.isPublished ? 'Published' : 'Draft'}
                           </span>
                         </div>
-                        <span className="text-xs text-secondary mt-0.5">
-                          {event.eventDate} · {event.location} · {event.registeredCount}/{event.capacity} RSVPs
-                        </span>
-                        {event.description && (
-                          <p className="text-xs text-secondary line-clamp-1 mt-1">{event.description}</p>
-                        )}
+                        <p className="text-xs text-on-surface-variant line-clamp-2 leading-relaxed">
+                          {evt.description}
+                        </p>
+                        <div className="text-xs text-on-surface flex justify-between font-medium">
+                          <span>RSVPs: <strong className="tabular-nums">{evt.registeredCount} / {evt.capacity}</strong></span>
+                          <span className="text-on-surface-variant">{evt.clubName ? `Club: ${evt.clubName}` : 'Platform-wide'}</span>
+                        </div>
                       </div>
 
-                      <div className="flex items-center gap-2 pt-2 sm:pt-0 border-t sm:border-t-0 border-border-default shrink-0">
+                      <div className="flex items-center justify-between pt-2 border-t border-border-default text-xs">
                         <button
                           type="button"
-                          onClick={() => handleEventStatus(event)}
-                          className="px-3 py-1.5 text-xs rounded-lg border border-border-default bg-surface-container text-primary font-medium hover:bg-surface-container-high transition-colors"
+                          onClick={() => handleToggleEventPublish(evt)}
+                          className="h-8 px-3 rounded-lg bg-surface-container text-on-surface text-xs font-semibold hover:bg-surface-container-high border border-border-default"
                         >
-                          {event.isPublished ? 'Unpublish' : 'Publish'}
+                          {evt.isPublished ? 'Unpublish' : 'Publish'}
                         </button>
                         <button
                           type="button"
-                          onClick={() => handleDeleteEvent(event)}
-                          className="px-2.5 py-1.5 text-xs text-secondary hover:text-primary underline"
+                          onClick={() => handleDeleteEvent(evt)}
+                          className="text-on-surface-variant hover:text-primary underline text-xs"
                         >
-                          Delete
+                          Delete Event
                         </button>
                       </div>
                     </div>
@@ -1093,62 +1265,54 @@ export const SuperAdminDashboard: React.FC = () => {
             <div className="bg-surface-container-lowest rounded-2xl border border-border-default p-5 sm:p-6 shadow-sm flex flex-col gap-4">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-3 border-b border-border-default">
                 <div>
-                  <h2 className="text-lg text-primary font-bold">Announcements &amp; Bulletins</h2>
-                  <p className="text-xs text-secondary">Broadcast institutional updates across campus</p>
+                  <h2 className="text-lg font-bold text-on-surface">Campus Bulletins &amp; Notices</h2>
+                  <p className="text-xs text-on-surface-variant">Broadcast messages to students and review club announcements</p>
                 </div>
                 <button
                   type="button"
                   onClick={() => setShowAnnouncementModal(true)}
                   className="h-9 px-4 rounded-xl bg-primary text-on-primary text-xs font-semibold hover:opacity-90 self-start sm:self-auto shadow-sm"
                 >
-                  + Post Announcement
+                  + Post Bulletin
                 </button>
               </div>
 
               <div className="flex flex-col gap-3">
                 {announcements.length === 0 ? (
-                  <div className="py-12 text-center text-secondary">No announcements posted.</div>
+                  <p className="text-xs text-on-surface-variant py-8 text-center">
+                    No announcements published yet.
+                  </p>
                 ) : (
                   announcements.map((ann) => (
                     <div
                       key={ann.id}
-                      className="p-4 rounded-xl border border-border-default bg-surface-container-low flex flex-col gap-2"
+                      className="p-4 rounded-xl border border-border-default bg-surface-container-low flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3"
                     >
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="flex flex-col min-w-0">
-                          <span className="font-semibold text-sm sm:text-base text-primary truncate">{ann.title}</span>
-                          <span className="text-xs text-secondary">
-                            Posted by {ann.postedByName} {ann.clubName ? `• ${ann.clubName}` : '• Institutional Notice'}
+                      <div className="flex flex-col gap-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h3 className="font-semibold text-sm text-on-surface">{ann.title}</h3>
+                          <span className="px-2 py-0.5 rounded text-[10px] uppercase font-bold bg-surface-container text-primary border border-border-default">
+                            {ann.isActive ? 'Active' : 'Inactive'}
                           </span>
                         </div>
-                        <span className="px-2 py-0.5 rounded text-[10px] uppercase font-bold border border-border-default bg-surface-container shrink-0">
-                          {ann.isActive ? 'Active' : 'Inactive'}
+                        <p className="text-xs text-on-surface-variant leading-relaxed">{ann.content}</p>
+                        <span className="text-[11px] text-on-surface-variant mt-1">
+                          Posted by {ann.postedByName} {ann.clubName ? `(${ann.clubName})` : ''} on {new Date(ann.createdAt).toLocaleDateString()}
                         </span>
                       </div>
-                      <p className="text-xs text-on-surface leading-relaxed mt-1">{ann.content}</p>
-                      <div className="flex items-center justify-end gap-2 pt-2 border-t border-border-default text-xs">
+
+                      <div className="flex items-center gap-2 pt-2 sm:pt-0 border-t sm:border-t-0 border-border-default shrink-0 text-xs">
                         <button
                           type="button"
-                          onClick={() => handleAnnouncementStatus(ann)}
-                          className="font-medium text-primary hover:underline"
+                          onClick={() => handleToggleAnnouncementStatus(ann)}
+                          className="h-8 px-3 rounded-lg bg-surface-container text-on-surface text-xs font-semibold hover:bg-surface-container-high border border-border-default"
                         >
                           {ann.isActive ? 'Deactivate' : 'Activate'}
                         </button>
                         <button
                           type="button"
-                          onClick={() => {
-                            setEditingAnnouncement(ann);
-                            setNewAnnouncementTitle(ann.title);
-                            setNewAnnouncementContent(ann.content);
-                          }}
-                          className="font-medium text-primary hover:underline"
-                        >
-                          Edit
-                        </button>
-                        <button
-                          type="button"
                           onClick={() => handleDeleteAnnouncement(ann)}
-                          className="text-secondary hover:text-primary underline"
+                          className="text-on-surface-variant hover:text-primary underline text-xs px-2"
                         >
                           Delete
                         </button>
@@ -1162,73 +1326,65 @@ export const SuperAdminDashboard: React.FC = () => {
 
           {/* TAB 6: ROLE GOVERNANCE */}
           {activeTab === 'roles' && (
-            <div className="bg-surface-container-lowest rounded-2xl border border-border-default p-5 sm:p-6 shadow-sm flex flex-col gap-4 max-w-2xl mx-auto w-full">
-              <div className="flex items-center gap-2 pb-3 border-b border-border-default">
-                <span className="material-symbols-outlined text-primary text-[22px]">security</span>
-                <div>
-                  <h2 className="text-lg text-primary font-bold">Role Management &amp; Access Control</h2>
-                  <p className="text-xs text-secondary">Elevate user privileges and link club leadership scopes</p>
-                </div>
+            <div className="bg-surface-container-lowest rounded-2xl border border-border-default p-5 sm:p-6 shadow-sm flex flex-col gap-6 max-w-2xl">
+              <div>
+                <h2 className="text-lg font-bold text-on-surface">Role Governance &amp; Admin Assignment</h2>
+                <p className="text-xs text-on-surface-variant">
+                  Elevate students to Club Admin or Super Admin, or assign Club Admins to specific club charters.
+                </p>
               </div>
 
-              <form onSubmit={handleRoleSubmit} className="flex flex-col gap-4 mt-2">
+              <form onSubmit={handleRoleSubmit} className="flex flex-col gap-4">
                 <div className="flex flex-col gap-1">
-                  <label className="text-xs uppercase tracking-wider font-bold text-secondary">
-                    Select User Identity
+                  <label className="font-label-caps text-label-caps text-on-surface-variant uppercase font-bold text-[11px]">
+                    Select User
                   </label>
                   <select
-                    aria-label="Target User"
                     value={selectedUserForRole?.id || ''}
                     onChange={(e) => {
-                      const u = users.find((usr) => usr.id === Number(e.target.value));
-                      setSelectedUserForRole(u || null);
+                      const found = users.find((u) => u.id === e.target.value);
+                      setSelectedUserForRole(found || null);
+                      if (found) {
+                        setTargetRole(found.role);
+                        if (found.assignedClubId) setTargetClubId(found.assignedClubId);
+                      }
                     }}
-                    className="h-10 px-3 rounded-lg bg-surface-container-low border border-border-default text-sm text-primary font-medium focus:outline-none focus:border-black"
+                    className="h-10 px-3 bg-surface-container-low border border-border-default rounded-lg text-xs font-medium text-on-surface focus:outline-none focus:border-black"
                   >
                     {users.map((u) => (
                       <option key={u.id} value={u.id}>
-                        {u.fullName} ({u.email}) - Current: {u.role}
+                        {u.fullName} ({u.email}) — Currently {u.role}
                       </option>
                     ))}
                   </select>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="flex flex-col gap-1">
-                    <label className="text-xs uppercase tracking-wider font-bold text-secondary">
-                      Current Role
-                    </label>
-                    <div className="h-10 px-3 rounded-lg bg-surface-container flex items-center text-sm font-medium text-secondary border border-border-default">
-                      {selectedUserForRole?.role || 'STUDENT'}
-                    </div>
-                  </div>
-
-                  <div className="flex flex-col gap-1">
-                    <label className="text-xs uppercase tracking-wider font-bold text-primary">
-                      Target Privilege Role
-                    </label>
-                    <select
-                      value={targetRole}
-                      onChange={(e) => setTargetRole(e.target.value as any)}
-                      className="h-10 px-3 rounded-lg bg-surface-container-low border border-border-default text-sm text-primary font-medium focus:outline-none focus:border-black"
-                    >
-                      <option value="CLUB_ADMIN">CLUB_ADMIN (Club Officer)</option>
-                      <option value="SUPER_ADMIN">SUPER_ADMIN (Institutional Admin)</option>
-                      <option value="STUDENT">STUDENT (Standard User)</option>
-                    </select>
-                  </div>
+                <div className="flex flex-col gap-1">
+                  <label className="font-label-caps text-label-caps text-on-surface-variant uppercase font-bold text-[11px]">
+                    Assign Target Role
+                  </label>
+                  <select
+                    value={targetRole}
+                    onChange={(e) => setTargetRole(e.target.value as Role)}
+                    className="h-10 px-3 bg-surface-container-low border border-border-default rounded-lg text-xs font-medium text-on-surface focus:outline-none focus:border-black"
+                  >
+                    <option value="STUDENT">STUDENT (Standard membership permissions)</option>
+                    <option value="CLUB_ADMIN">CLUB_ADMIN (Manage assigned club charter &amp; events)</option>
+                    <option value="SUPER_ADMIN">SUPER_ADMIN (Full platform governance authority)</option>
+                  </select>
                 </div>
 
                 {targetRole === 'CLUB_ADMIN' && (
                   <div className="flex flex-col gap-1">
-                    <label className="text-xs uppercase tracking-wider font-bold text-primary">
-                      Assigned Club Charter Jurisdiction
+                    <label className="font-label-caps text-label-caps text-on-surface-variant uppercase font-bold text-[11px]">
+                      Assign to Club Charter
                     </label>
                     <select
                       value={targetClubId}
-                      onChange={(e) => setTargetClubId(Number(e.target.value))}
-                      className="h-10 px-3 rounded-lg bg-surface-container-low border border-border-default text-sm text-primary font-medium focus:outline-none focus:border-black"
+                      onChange={(e) => setTargetClubId(e.target.value)}
+                      className="h-10 px-3 bg-surface-container-low border border-border-default rounded-lg text-xs font-medium text-on-surface focus:outline-none focus:border-black"
                     >
+                      <option value="">-- Select a Club Charter --</option>
                       {clubs.map((c) => (
                         <option key={c.id} value={c.id}>
                           {c.name} ({c.refId})
@@ -1238,16 +1394,16 @@ export const SuperAdminDashboard: React.FC = () => {
                   </div>
                 )}
 
-                <div className="p-3 bg-surface-container-low rounded-lg border border-border-default text-xs text-secondary flex items-start gap-2">
-                  <span className="material-symbols-outlined text-[16px] text-primary shrink-0 mt-0.5">info</span>
-                  <span>Privilege changes are logged permanently in the institutional audit ledger.</span>
+                <div className="p-3 bg-surface-container rounded-xl border border-border-default text-xs text-on-surface-variant">
+                  <span className="font-semibold block text-primary mb-0.5">Security Notice</span>
+                  Row Level Security policies enforce that only Super Administrators can elevate user roles. All role changes are recorded in the security audit log.
                 </div>
 
                 <button
                   type="submit"
-                  className="h-10 bg-primary text-on-primary rounded-xl font-semibold text-xs sm:text-sm hover:opacity-90 shadow-sm transition-opacity"
+                  className="h-10 px-5 rounded-xl bg-primary text-on-primary text-xs font-semibold shadow-sm hover:opacity-90 self-start"
                 >
-                  Save Role &amp; Privileges
+                  Update User Privileges
                 </button>
               </form>
             </div>
@@ -1256,527 +1412,168 @@ export const SuperAdminDashboard: React.FC = () => {
           {/* TAB 7: AUDIT TRAIL */}
           {activeTab === 'audit' && (
             <div className="bg-surface-container-lowest rounded-2xl border border-border-default p-5 sm:p-6 shadow-sm flex flex-col gap-4">
-              <div className="flex items-center justify-between pb-3 border-b border-border-default">
-                <div>
-                  <h2 className="text-lg text-primary font-bold">Immutable Audit Ledger</h2>
-                  <p className="text-xs text-secondary">{auditLogs.length} Total recorded system events</p>
-                </div>
+              <div className="pb-3 border-b border-border-default">
+                <h2 className="text-lg font-bold text-on-surface">Platform Security &amp; Audit Trail</h2>
+                <p className="text-xs text-on-surface-variant">Chronological ledger of registrations, role changes, and system events</p>
               </div>
 
-              <div className="flex flex-col gap-2">
+              <div className="flex flex-col gap-2.5">
                 {auditLogs.length === 0 ? (
-                  <div className="py-12 text-center text-secondary">No audit logs recorded.</div>
+                  <p className="text-xs text-on-surface-variant py-8 text-center">
+                    No audit records logged yet.
+                  </p>
                 ) : (
                   auditLogs.map((log) => (
-                    <div
-                      key={log.id}
-                      className="p-3 bg-surface-container-low border border-border-default rounded-xl flex flex-col gap-1 text-xs"
-                    >
-                      <div className="flex justify-between items-center font-semibold text-primary">
-                        <span className="font-mono">{log.actionType}</span>
-                        <span className="text-secondary text-[11px]">{new Date(log.createdAt).toLocaleString()}</span>
+                    <div key={log.id} className="p-3.5 bg-surface-container-low border border-border-default rounded-xl flex flex-col gap-1 text-xs">
+                      <div className="flex justify-between items-center text-on-surface font-semibold">
+                        <span className="font-mono text-xs">{log.actionType}</span>
+                        <span className="text-[11px] text-on-surface-variant tabular-nums">
+                          {new Date(log.createdAt).toLocaleString()}
+                        </span>
                       </div>
-                      <p className="text-on-surface leading-relaxed">{log.details}</p>
-                      <div className="flex flex-wrap justify-between text-secondary pt-1 border-t border-border-default/60 text-[11px] gap-2">
-                        <span>Actor: {log.actorEmail} ({log.actorRole})</span>
-                        <span>IP: {log.ipAddress}</span>
-                        <span className="font-mono text-[10px]">Hash: {log.shaHash}</span>
-                      </div>
+                      <p className="text-on-surface leading-relaxed mt-0.5">{log.details}</p>
+                      <span className="text-[10px] text-on-surface-variant mt-1">
+                        Actor: {log.actorEmail} ({log.actorRole}) {log.targetIdentifier ? `• Target: ${log.targetIdentifier}` : ''}
+                      </span>
                     </div>
                   ))
                 )}
               </div>
             </div>
           )}
-
-          {/* TAB 8: LANDING CMS */}
-          {activeTab === 'cms' && (
-            <div className="bg-surface-container-lowest rounded-2xl border border-border-default p-5 sm:p-6 shadow-sm flex flex-col gap-4 max-w-2xl mx-auto w-full">
-              <div className="flex items-center gap-2 pb-3 border-b border-border-default">
-                <span className="material-symbols-outlined text-primary text-[22px]">web</span>
-                <div>
-                  <h2 className="text-lg text-primary font-bold">Landing Page Content Management</h2>
-                  <p className="text-xs text-secondary">Update site branding, hero headlines, and public bulletins</p>
-                </div>
-              </div>
-
-              <form onSubmit={handleSaveCms} className="flex flex-col gap-4 mt-2">
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs uppercase tracking-wider font-bold text-secondary">Site Brand Name</label>
-                  <input
-                    type="text"
-                    required
-                    value={cmsSiteName}
-                    onChange={(e) => setCmsSiteName(e.target.value)}
-                    className="h-10 px-3 bg-surface-container-low border border-border-default rounded-lg text-sm text-on-surface focus:outline-none focus:border-black"
-                  />
-                </div>
-
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs uppercase tracking-wider font-bold text-secondary">Hero Headline</label>
-                  <input
-                    type="text"
-                    required
-                    value={cmsHeading}
-                    onChange={(e) => setCmsHeading(e.target.value)}
-                    className="h-10 px-3 bg-surface-container-low border border-border-default rounded-lg text-sm text-on-surface focus:outline-none focus:border-black"
-                  />
-                </div>
-
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs uppercase tracking-wider font-bold text-secondary">Hero Description</label>
-                  <textarea
-                    rows={3}
-                    required
-                    value={cmsDesc}
-                    onChange={(e) => setCmsDesc(e.target.value)}
-                    className="p-3 bg-surface-container-low border border-border-default rounded-lg text-sm text-on-surface focus:outline-none focus:border-black"
-                  />
-                </div>
-
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs uppercase tracking-wider font-bold text-secondary">Notice Banner Title</label>
-                  <input
-                    type="text"
-                    value={cmsBannerTitle}
-                    onChange={(e) => setCmsBannerTitle(e.target.value)}
-                    className="h-10 px-3 bg-surface-container-low border border-border-default rounded-lg text-sm text-on-surface focus:outline-none focus:border-black"
-                  />
-                </div>
-
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs uppercase tracking-wider font-bold text-secondary">Notice Banner Content</label>
-                  <textarea
-                    rows={2}
-                    value={cmsBannerText}
-                    onChange={(e) => setCmsBannerText(e.target.value)}
-                    className="p-3 bg-surface-container-low border border-border-default rounded-lg text-sm text-on-surface focus:outline-none focus:border-black"
-                  />
-                </div>
-
-                <button
-                  type="submit"
-                  className="h-10 bg-primary text-on-primary rounded-xl font-semibold text-xs sm:text-sm hover:opacity-90 shadow-sm transition-opacity"
-                >
-                  Save &amp; Publish Landing Page CMS
-                </button>
-              </form>
-            </div>
-          )}
-
         </div>
       </main>
 
-      {/* User Management Modal */}
-      <Modal
-        isOpen={showUsersModal}
-        onClose={() => setShowUsersModal(false)}
-        title="User Management Ledger"
-        maxWidth="max-w-xl"
-      >
-        <div className="flex flex-col gap-3 max-h-[70vh] overflow-y-auto">
-          <div className="flex justify-between items-center text-xs text-secondary border-b pb-2">
-            <span>{users.length} Registered Accounts</span>
-            <span>Active / Deactivate Control</span>
-          </div>
-          {users.map((u) => (
-            <div
-              key={u.id}
-              className="p-3 bg-surface-container-low border border-border-default rounded flex items-center justify-between gap-2"
-            >
-              <div className="flex flex-col min-w-0">
-                <span className="font-semibold text-primary truncate">{u.fullName}</span>
-                <span className="text-xs text-secondary truncate">{u.email}</span>
-                <div className="flex items-center gap-1 mt-1">
-                  <span className="px-1.5 py-0.2 bg-surface-container text-xs font-semibold rounded uppercase">
-                    {u.role}
-                  </span>
-                  <span className="text-xs text-secondary">• {u.studentId || 'ID: STU'}</span>
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => handleToggleUserStatus(u)}
-                  className={`px-3 py-1 text-xs rounded border ${
-                    u.isActive
-                      ? 'bg-surface-container-highest text-primary border-border-default hover:bg-neutral-300'
-                      : 'bg-primary text-on-primary border-black'
-                  }`}
-                >
-                  {u.isActive ? 'Deactivate' : 'Activate'}
-                </button>
-                {u.role !== 'SUPER_ADMIN' && (
-                  <button
-                    type="button"
-                    onClick={() => handleDeleteUser(u)}
-                    className="px-3 py-1 text-xs rounded border border-black bg-primary text-on-primary"
-                  >
-                    Delete
-                  </button>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-      </Modal>
-
-      {/* Landing Page CMS Modal */}
-      <Modal
-        isOpen={showCmsModal}
-        onClose={() => setShowCmsModal(false)}
-        title="Landing Page CMS Editor"
-        maxWidth="max-w-xl"
-      >
-        <form onSubmit={handleSaveCms} className="flex flex-col gap-3">
-          <div className="flex flex-col gap-1">
-            <label className="font-label-sm text-secondary uppercase">Site Brand Name</label>
-            <input
-              type="text"
-              required
-              value={cmsSiteName}
-              onChange={(e) => setCmsSiteName(e.target.value)}
-              className="h-10 px-3 bg-surface-container-lowest border border-border-default rounded font-body-md focus:outline-none focus:border-black"
-            />
-          </div>
-
-          <div className="flex flex-col gap-1">
-            <label className="font-label-sm text-secondary uppercase">Hero Heading</label>
-            <input
-              type="text"
-              required
-              value={cmsHeading}
-              onChange={(e) => setCmsHeading(e.target.value)}
-              className="h-10 px-3 bg-surface-container-lowest border border-border-default rounded font-body-md focus:outline-none focus:border-black"
-            />
-          </div>
-
-          <div className="flex flex-col gap-1">
-            <label className="font-label-sm text-secondary uppercase">Hero Description</label>
-            <textarea
-              rows={2}
-              required
-              value={cmsDesc}
-              onChange={(e) => setCmsDesc(e.target.value)}
-              className="p-3 bg-surface-container-lowest border border-border-default rounded font-body-md focus:outline-none focus:border-black"
-            />
-          </div>
-
-          <div className="flex flex-col gap-1">
-            <label className="font-label-sm text-secondary uppercase">Notice Banner Title</label>
-            <input
-              type="text"
-              value={cmsBannerTitle}
-              onChange={(e) => setCmsBannerTitle(e.target.value)}
-              className="h-10 px-3 bg-surface-container-lowest border border-border-default rounded font-body-md focus:outline-none focus:border-black"
-            />
-          </div>
-
-          <div className="flex flex-col gap-1">
-            <label className="font-label-sm text-secondary uppercase">Notice Banner Content</label>
-            <textarea
-              rows={2}
-              value={cmsBannerText}
-              onChange={(e) => setCmsBannerText(e.target.value)}
-              className="p-3 bg-surface-container-lowest border border-border-default rounded font-body-md focus:outline-none focus:border-black"
-            />
-          </div>
-
-          <div className="flex justify-end gap-2 pt-2 border-t border-border-subtle">
-            <button
-              type="button"
-              onClick={() => setShowCmsModal(false)}
-              className="h-9 px-4 bg-surface-container text-on-surface font-label-md rounded hover:bg-surface-container-high transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              className="h-9 px-4 bg-primary text-on-primary font-label-md rounded hover:bg-neutral-800 transition-colors"
-            >
-              Save & Publish CMS
-            </button>
-          </div>
-        </form>
-      </Modal>
-
-      {/* Create Event Modal */}
-      <Modal
-        isOpen={showCreateEventModal}
-        onClose={() => setShowCreateEventModal(false)}
-        title="Create Platform Event"
-      >
-        <form onSubmit={handleCreateEvent} className="flex flex-col gap-3">
-          <input
-            required
-            value={newEventTitle}
-            onChange={(e) => setNewEventTitle(e.target.value)}
-            placeholder="Event title"
-            className="h-10 px-3 bg-surface-container-lowest border border-border-default rounded font-body-md"
-          />
-          <textarea
-            required
-            rows={3}
-            value={newEventDescription}
-            onChange={(e) => setNewEventDescription(e.target.value)}
-            placeholder="Description"
-            className="p-3 bg-surface-container-lowest border border-border-default rounded font-body-md"
-          />
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <input
-              required
-              value={newEventDate}
-              onChange={(e) => setNewEventDate(e.target.value)}
-              placeholder="Date and time"
-              className="h-10 px-3 bg-surface-container-lowest border border-border-default rounded font-body-md"
-            />
-            <input
-              required
-              value={newEventLocation}
-              onChange={(e) => setNewEventLocation(e.target.value)}
-              placeholder="Location"
-              className="h-10 px-3 bg-surface-container-lowest border border-border-default rounded font-body-md"
-            />
-          </div>
-          <input
-            type="url"
-            value={newEventLink}
-            onChange={(e) => setNewEventLink(e.target.value)}
-            placeholder="Event link (optional), e.g. https://meet.example.com/event"
-            className="h-10 px-3 bg-surface-container-lowest border border-border-default rounded font-body-md"
-          />
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <input
-              required
-              min="1"
-              type="number"
-              value={newEventCapacity}
-              onChange={(e) => setNewEventCapacity(e.target.value)}
-              placeholder="Capacity"
-              className="h-10 px-3 bg-surface-container-lowest border border-border-default rounded font-body-md"
-            />
-            <select
-              value={newEventClubId}
-              onChange={(e) => setNewEventClubId(e.target.value ? Number(e.target.value) : '')}
-              className="h-10 px-3 bg-surface-container-lowest border border-border-default rounded font-body-md"
-            >
-              <option value="">Platform event</option>
-              {clubs.map((club) => (
-                <option key={club.id} value={club.id}>{club.name}</option>
-              ))}
-            </select>
-          </div>
-          <button type="submit" className="h-10 bg-primary text-on-primary rounded font-semibold">
-            Create Event
-          </button>
-        </form>
-      </Modal>
-
-      <Modal
-        isOpen={showEventManager}
-        onClose={() => setShowEventManager(false)}
-        title="Manage Events"
-        maxWidth="max-w-xl"
-      >
-        <div className="flex flex-col gap-3 max-h-[70vh] overflow-y-auto">
-          <div className="text-xs text-secondary border-b border-border-subtle pb-2">
-            {events.length} events
-          </div>
-          {events.length === 0 && <p className="text-sm text-secondary">No events found.</p>}
-          {events.map((event) => (
-            <div key={event.id} className="rounded border border-border-default bg-surface-container-low p-3 flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <p className="font-semibold text-primary truncate">{event.title}</p>
-                <p className="text-sm text-secondary truncate">{event.eventDate} · {event.location}</p>
-                <span className="text-xs text-secondary">
-                  {event.isPublished ? 'Published' : 'Unpublished'} · {event.registeredCount}/{event.capacity} registered
-                </span>
-              </div>
-              <div className="flex items-center gap-2 shrink-0">
-                <button type="button" onClick={() => handleEventStatus(event)} className="text-xs underline">
-                  {event.isPublished ? 'Unpublish' : 'Publish'}
-                </button>
-                <button type="button" onClick={() => handleDeleteEvent(event)} className="text-xs text-primary underline">
-                  Delete
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      </Modal>
-
-      {/* Announcement Management Modal */}
-      <Modal
-        isOpen={showAnnouncementManager}
-        onClose={() => setShowAnnouncementManager(false)}
-        title="Announcement Management"
-        maxWidth="max-w-xl"
-      >
-        <div className="flex flex-col gap-3">
-          <div className="flex items-center justify-between border-b border-border-subtle pb-2">
-            <span className="text-xs text-secondary">{announcements.length} announcements</span>
-            <button
-              type="button"
-              onClick={() => { setShowAnnouncementManager(false); setShowAnnouncementModal(true); }}
-              className="h-8 px-3 rounded bg-primary text-on-primary text-xs font-semibold"
-            >
-              Add Announcement
-            </button>
-          </div>
-          {announcements.length === 0 && <p className="text-sm text-secondary">No announcements found.</p>}
-          {announcements.map((announcement) => (
-            <div key={announcement.id} className="rounded border border-border-default bg-surface-container-low p-3 flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <p className="font-semibold text-primary truncate">{announcement.title}</p>
-                <p className="text-sm text-secondary line-clamp-2">{announcement.content}</p>
-                <span className="text-xs text-secondary">{announcement.isActive ? 'Active' : 'Inactive'}{announcement.clubName ? ` • ${announcement.clubName}` : ' • Global'}</span>
-              </div>
-              <div className="flex items-center gap-2 shrink-0">
-                <button type="button" onClick={() => handleAnnouncementStatus(announcement)} className="text-xs underline">
-                  {announcement.isActive ? 'Deactivate' : 'Activate'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEditingAnnouncement(announcement);
-                    setNewAnnouncementTitle(announcement.title);
-                    setNewAnnouncementContent(announcement.content);
-                    setShowAnnouncementManager(false);
-                  }}
-                  className="text-xs underline"
-                >
-                  Edit
-                </button>
-                <button type="button" onClick={() => handleDeleteAnnouncement(announcement)} className="text-xs text-primary underline">
-                  Delete
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      </Modal>
-
-      {/* Announcement Modal */}
-      <Modal
-        isOpen={showAnnouncementModal}
-        onClose={() => setShowAnnouncementModal(false)}
-        title="Publish Announcement"
-      >
-        <form onSubmit={handleCreateAnnouncement} className="flex flex-col gap-3">
-          <input
-            required
-            value={newAnnouncementTitle}
-            onChange={(e) => setNewAnnouncementTitle(e.target.value)}
-            placeholder="Announcement title"
-            className="h-10 px-3 bg-surface-container-lowest border border-border-default rounded font-body-md"
-          />
-          <textarea
-            required
-            rows={5}
-            value={newAnnouncementContent}
-            onChange={(e) => setNewAnnouncementContent(e.target.value)}
-            placeholder="Write the announcement for students and club admins"
-            className="p-3 bg-surface-container-lowest border border-border-default rounded font-body-md"
-          />
-          <button type="submit" className="h-10 bg-primary text-on-primary rounded font-semibold">
-            Publish Announcement
-          </button>
-        </form>
-      </Modal>
-
-      <Modal
-        isOpen={!!editingAnnouncement}
-        onClose={() => setEditingAnnouncement(null)}
-        title="Edit Announcement"
-      >
-        <form onSubmit={handleSaveAnnouncement} className="flex flex-col gap-3">
-          <input
-            required
-            value={newAnnouncementTitle}
-            onChange={(e) => setNewAnnouncementTitle(e.target.value)}
-            placeholder="Announcement title"
-            className="h-10 px-3 bg-surface-container-lowest border border-border-default rounded font-body-md"
-          />
-          <textarea
-            required
-            rows={5}
-            value={newAnnouncementContent}
-            onChange={(e) => setNewAnnouncementContent(e.target.value)}
-            placeholder="Announcement content"
-            className="p-3 bg-surface-container-lowest border border-border-default rounded font-body-md"
-          />
-          <button type="submit" className="h-10 bg-primary text-on-primary rounded font-semibold">
-            Save Announcement
-          </button>
-        </form>
-      </Modal>
-
-      {/* Create Club Modal */}
+      {/* Create Club Modal with Logo Upload */}
       <Modal
         isOpen={showCreateClubModal}
         onClose={() => setShowCreateClubModal(false)}
-        title="Register New College Club"
+        title="Register New Student Club"
       >
-        <form onSubmit={handleCreateClub} className="flex flex-col gap-3">
+        <form onSubmit={handleCreateClubSubmit} className="flex flex-col gap-3">
           <div className="flex flex-col gap-1">
-            <label className="font-label-sm text-secondary uppercase">Club Name</label>
+            <label className="font-label-caps text-label-caps text-on-surface-variant uppercase font-bold text-[11px]">
+              Club Name *
+            </label>
             <input
               type="text"
               required
-              placeholder="e.g. Artificial Intelligence Research Society"
+              placeholder="e.g. Artificial Intelligence Society"
               value={newClubName}
               onChange={(e) => setNewClubName(e.target.value)}
-              className="h-10 px-3 bg-surface-container-lowest border border-border-default rounded font-body-md focus:outline-none focus:border-black"
+              className="h-10 px-3 bg-surface-container-lowest border border-border-default rounded-lg text-xs font-medium text-on-surface focus:outline-none focus:border-black"
             />
           </div>
 
-          <div className="flex flex-col gap-1">
-            <label className="font-label-sm text-secondary uppercase">Category</label>
-            <select
-              value={newClubCat}
-              onChange={(e) => setNewClubCat(e.target.value)}
-              className="h-10 px-3 bg-surface-container-lowest border border-border-default rounded font-body-md focus:outline-none focus:border-black"
-            >
-              <option value="Academic">Academic</option>
-              <option value="Engineering">Engineering</option>
-              <option value="Humanities">Humanities</option>
-              <option value="Sports">Sports</option>
-              <option value="Arts">Arts</option>
-            </select>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            <div className="flex flex-col gap-1">
+              <label className="font-label-caps text-label-caps text-on-surface-variant uppercase font-bold text-[11px]">
+                Category *
+              </label>
+              <select
+                value={newClubCat}
+                onChange={(e) => setNewClubCat(e.target.value)}
+                className="h-10 px-3 bg-surface-container-lowest border border-border-default rounded-lg text-xs font-medium text-on-surface focus:outline-none focus:border-black"
+              >
+                <option value="Academic">Academic</option>
+                <option value="Engineering">Engineering</option>
+                <option value="Tech">Tech</option>
+                <option value="Humanities">Humanities</option>
+                <option value="Creative">Creative</option>
+                <option value="Sports">Sports</option>
+              </select>
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="font-label-caps text-label-caps text-on-surface-variant uppercase font-bold text-[11px]">
+                Contact Email
+              </label>
+              <input
+                type="email"
+                placeholder="club@univ.edu"
+                value={newClubEmail}
+                onChange={(e) => setNewClubEmail(e.target.value)}
+                className="h-10 px-3 bg-surface-container-lowest border border-border-default rounded-lg text-xs font-medium text-on-surface focus:outline-none focus:border-black"
+              />
+            </div>
           </div>
 
           <div className="flex flex-col gap-1">
-            <label className="font-label-sm text-secondary uppercase">Meeting Schedule</label>
-            <input
-              type="text"
-              placeholder="e.g. Meets Tuesdays 5 PM"
-              value={newClubSchedule}
-              onChange={(e) => setNewClubSchedule(e.target.value)}
-              className="h-10 px-3 bg-surface-container-lowest border border-border-default rounded font-body-md focus:outline-none focus:border-black"
-            />
-          </div>
-
-          <div className="flex flex-col gap-1">
-            <label className="font-label-sm text-secondary uppercase">Description</label>
+            <label className="font-label-caps text-label-caps text-on-surface-variant uppercase font-bold text-[11px]">
+              Mission / Description *
+            </label>
             <textarea
               rows={3}
+              required
+              placeholder="State the organization charter and objectives..."
               value={newClubDesc}
               onChange={(e) => setNewClubDesc(e.target.value)}
-              className="p-3 bg-surface-container-lowest border border-border-default rounded font-body-md focus:outline-none focus:border-black"
+              className="p-3 bg-surface-container-lowest border border-border-default rounded-lg text-xs text-on-surface focus:outline-none focus:border-black"
             />
           </div>
 
-          <div className="flex justify-end gap-2 pt-2 border-t border-border-subtle">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            <div className="flex flex-col gap-1">
+              <label className="font-label-caps text-label-caps text-on-surface-variant uppercase font-bold text-[11px]">
+                Meeting Schedule
+              </label>
+              <input
+                type="text"
+                placeholder="Wednesdays • 6:00 PM"
+                value={newClubSchedule}
+                onChange={(e) => setNewClubSchedule(e.target.value)}
+                className="h-10 px-3 bg-surface-container-lowest border border-border-default rounded-lg text-xs font-medium text-on-surface focus:outline-none focus:border-black"
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="font-label-caps text-label-caps text-on-surface-variant uppercase font-bold text-[11px]">
+                Meeting Location
+              </label>
+              <input
+                type="text"
+                placeholder="Science Hall 101"
+                value={newClubLocation}
+                onChange={(e) => setNewClubLocation(e.target.value)}
+                className="h-10 px-3 bg-surface-container-lowest border border-border-default rounded-lg text-xs font-medium text-on-surface focus:outline-none focus:border-black"
+              />
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <label className="font-label-caps text-label-caps text-on-surface-variant uppercase font-bold text-[11px]">
+              Faculty Advisor
+            </label>
+            <input
+              type="text"
+              placeholder="Dr. Samuel Higgins"
+              value={newClubAdvisor}
+              onChange={(e) => setNewClubAdvisor(e.target.value)}
+              className="h-10 px-3 bg-surface-container-lowest border border-border-default rounded-lg text-xs font-medium text-on-surface focus:outline-none focus:border-black"
+            />
+          </div>
+
+          {/* Logo Uploader */}
+          <ImageUploader
+            bucket="club-logos"
+            folderId={user?.id}
+            label="Club Logo"
+            currentImageUrl={newClubLogoUrl}
+            onImageUploaded={(url) => setNewClubLogoUrl(url)}
+            onImageRemoved={() => setNewClubLogoUrl('')}
+            helperText="JPG, PNG, WebP (max 5 MB)"
+            aspectRatio="square"
+          />
+
+          <div className="flex justify-end gap-2 pt-2 border-t border-border-default">
             <button
               type="button"
               onClick={() => setShowCreateClubModal(false)}
-              className="h-9 px-4 bg-surface-container text-on-surface font-label-md rounded hover:bg-surface-container-high transition-colors"
+              className="h-9 px-4 rounded-lg bg-surface-container text-on-surface text-xs font-semibold"
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="h-9 px-4 bg-primary text-on-primary font-label-md rounded hover:bg-neutral-800 transition-colors"
+              className="h-9 px-5 rounded-lg bg-primary text-on-primary text-xs font-semibold shadow-sm hover:opacity-90"
             >
               Create Club
             </button>
@@ -1784,55 +1581,285 @@ export const SuperAdminDashboard: React.FC = () => {
         </form>
       </Modal>
 
-      {/* Full Audit Logs Modal */}
+      {/* Create Event Modal with Poster Upload */}
       <Modal
-        isOpen={showAuditModal}
-        onClose={() => setShowAuditModal(false)}
-        title="Full Platform Audit Log"
-        maxWidth="max-w-xl"
+        isOpen={showCreateEventModal}
+        onClose={() => setShowCreateEventModal(false)}
+        title="Create Platform or Club Event"
       >
-        <div className="flex flex-col gap-2 max-h-[70vh] overflow-y-auto">
-          {auditLogs.map((log) => (
-            <div
-              key={log.id}
-              className="p-3 bg-surface-container-low border border-border-default rounded flex flex-col gap-1 text-xs"
-            >
-              <div className="flex justify-between font-semibold text-primary">
-                <span>{log.actionType}</span>
-                <span className="text-secondary">{new Date(log.createdAt).toLocaleString()}</span>
-              </div>
-              <p className="text-on-surface">{log.details}</p>
-              <div className="flex justify-between text-secondary pt-1 border-t border-border-subtle">
-                <span>Actor: {log.actorEmail} ({log.actorRole})</span>
-                <span>IP: {log.ipAddress}</span>
-              </div>
+        <form onSubmit={handleCreateEventSubmit} className="flex flex-col gap-3">
+          <div className="flex flex-col gap-1">
+            <label className="font-label-caps text-label-caps text-on-surface-variant uppercase font-bold text-[11px]">
+              Event Title *
+            </label>
+            <input
+              type="text"
+              required
+              placeholder="e.g. Annual Student Assembly"
+              value={newEventTitle}
+              onChange={(e) => setNewEventTitle(e.target.value)}
+              className="h-10 px-3 bg-surface-container-lowest border border-border-default rounded-lg text-xs font-medium text-on-surface focus:outline-none focus:border-black"
+            />
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            <div className="flex flex-col gap-1">
+              <label className="font-label-caps text-label-caps text-on-surface-variant uppercase font-bold text-[11px]">
+                Host Organization
+              </label>
+              <select
+                value={newEventClubId}
+                onChange={(e) => setNewEventClubId(e.target.value)}
+                className="h-10 px-3 bg-surface-container-lowest border border-border-default rounded-lg text-xs font-medium text-on-surface focus:outline-none focus:border-black"
+              >
+                <option value="">Campus Platform Event</option>
+                {clubs.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
             </div>
-          ))}
-        </div>
+            <div className="flex flex-col gap-1">
+              <label className="font-label-caps text-label-caps text-on-surface-variant uppercase font-bold text-[11px]">
+                Capacity *
+              </label>
+              <input
+                type="number"
+                required
+                min={1}
+                value={newEventCapacity}
+                onChange={(e) => setNewEventCapacity(e.target.value)}
+                className="h-10 px-3 bg-surface-container-lowest border border-border-default rounded-lg text-xs font-medium text-on-surface focus:outline-none focus:border-black"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            <div className="flex flex-col gap-1">
+              <label className="font-label-caps text-label-caps text-on-surface-variant uppercase font-bold text-[11px]">
+                Date &amp; Time *
+              </label>
+              <input
+                type="text"
+                required
+                placeholder="Nov 12 • 2:00 PM"
+                value={newEventDate}
+                onChange={(e) => setNewEventDate(e.target.value)}
+                className="h-10 px-3 bg-surface-container-lowest border border-border-default rounded-lg text-xs font-medium text-on-surface focus:outline-none focus:border-black"
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="font-label-caps text-label-caps text-on-surface-variant uppercase font-bold text-[11px]">
+                Location *
+              </label>
+              <input
+                type="text"
+                required
+                placeholder="Main Auditorium"
+                value={newEventLocation}
+                onChange={(e) => setNewEventLocation(e.target.value)}
+                className="h-10 px-3 bg-surface-container-lowest border border-border-default rounded-lg text-xs font-medium text-on-surface focus:outline-none focus:border-black"
+              />
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <label className="font-label-caps text-label-caps text-on-surface-variant uppercase font-bold text-[11px]">
+              Meeting / Registration Link (Optional)
+            </label>
+            <input
+              type="url"
+              placeholder="https://univ.edu/events/assembly"
+              value={newEventLink}
+              onChange={(e) => setNewEventLink(e.target.value)}
+              className="h-10 px-3 bg-surface-container-lowest border border-border-default rounded-lg text-xs font-medium text-on-surface focus:outline-none focus:border-black"
+            />
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <label className="font-label-caps text-label-caps text-on-surface-variant uppercase font-bold text-[11px]">
+              Description
+            </label>
+            <textarea
+              rows={3}
+              placeholder="Event agenda and instructions..."
+              value={newEventDescription}
+              onChange={(e) => setNewEventDescription(e.target.value)}
+              className="p-3 bg-surface-container-lowest border border-border-default rounded-lg text-xs text-on-surface focus:outline-none focus:border-black"
+            />
+          </div>
+
+          {/* Event Poster Upload */}
+          <ImageUploader
+            bucket="event-posters"
+            folderId={user?.id}
+            label="Event Poster"
+            currentImageUrl={newEventPosterUrl}
+            onImageUploaded={(url) => setNewEventPosterUrl(url)}
+            onImageRemoved={() => setNewEventPosterUrl('')}
+            helperText="JPG, PNG, WebP (max 5 MB)"
+            aspectRatio="banner"
+          />
+
+          <div className="flex justify-end gap-2 pt-2 border-t border-border-default">
+            <button
+              type="button"
+              onClick={() => setShowCreateEventModal(false)}
+              className="h-9 px-4 rounded-lg bg-surface-container text-on-surface text-xs font-semibold"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="h-9 px-5 rounded-lg bg-primary text-on-primary text-xs font-semibold shadow-sm hover:opacity-90"
+            >
+              Publish Event
+            </button>
+          </div>
+        </form>
       </Modal>
 
-      {/* Confirmation Dialog Modal */}
+      {/* Broadcast Announcement Modal */}
       <Modal
-        isOpen={!!confirmDialog}
+        isOpen={showAnnouncementModal}
+        onClose={() => setShowAnnouncementModal(false)}
+        title="Broadcast Campus Notice"
+      >
+        <form onSubmit={handleCreateAnnouncementSubmit} className="flex flex-col gap-3">
+          <div className="flex flex-col gap-1">
+            <label className="font-label-caps text-label-caps text-on-surface-variant uppercase font-bold text-[11px]">
+              Notice Title *
+            </label>
+            <input
+              type="text"
+              required
+              placeholder="e.g. Campus Activity Week Guidelines"
+              value={newAnnouncementTitle}
+              onChange={(e) => setNewAnnouncementTitle(e.target.value)}
+              className="h-10 px-3 bg-surface-container-lowest border border-border-default rounded-lg text-xs font-medium text-on-surface focus:outline-none focus:border-black"
+            />
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <label className="font-label-caps text-label-caps text-on-surface-variant uppercase font-bold text-[11px]">
+              Message Content *
+            </label>
+            <textarea
+              rows={4}
+              required
+              placeholder="Campus-wide message..."
+              value={newAnnouncementContent}
+              onChange={(e) => setNewAnnouncementContent(e.target.value)}
+              className="p-3 bg-surface-container-lowest border border-border-default rounded-lg text-xs text-on-surface focus:outline-none focus:border-black"
+            />
+          </div>
+
+          <div className="flex justify-end gap-2 pt-2 border-t border-border-default">
+            <button
+              type="button"
+              onClick={() => setShowAnnouncementModal(false)}
+              className="h-9 px-4 rounded-lg bg-surface-container text-on-surface text-xs font-semibold"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="h-9 px-5 rounded-lg bg-primary text-on-primary text-xs font-semibold shadow-sm hover:opacity-90"
+            >
+              Broadcast
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Role Management Modal */}
+      <Modal
+        isOpen={showRoleModal}
+        onClose={() => setShowRoleModal(false)}
+        title={`Role Governance: ${selectedUserForRole?.fullName || 'User'}`}
+      >
+        <form onSubmit={handleRoleSubmit} className="flex flex-col gap-3">
+          <div className="p-3 bg-surface-container-low border border-border-default rounded-xl text-xs">
+            <span className="font-semibold block text-on-surface">{selectedUserForRole?.fullName}</span>
+            <span className="text-on-surface-variant">{selectedUserForRole?.email}</span>
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <label className="font-label-caps text-label-caps text-on-surface-variant uppercase font-bold text-[11px]">
+              Target Role
+            </label>
+            <select
+              value={targetRole}
+              onChange={(e) => setTargetRole(e.target.value as Role)}
+              className="h-10 px-3 bg-surface-container-lowest border border-border-default rounded-lg text-xs font-medium text-on-surface focus:outline-none focus:border-black"
+            >
+              <option value="STUDENT">STUDENT</option>
+              <option value="CLUB_ADMIN">CLUB_ADMIN</option>
+              <option value="SUPER_ADMIN">SUPER_ADMIN</option>
+            </select>
+          </div>
+
+          {targetRole === 'CLUB_ADMIN' && (
+            <div className="flex flex-col gap-1">
+              <label className="font-label-caps text-label-caps text-on-surface-variant uppercase font-bold text-[11px]">
+                Assigned Club Charter
+              </label>
+              <select
+                value={targetClubId}
+                onChange={(e) => setTargetClubId(e.target.value)}
+                className="h-10 px-3 bg-surface-container-lowest border border-border-default rounded-lg text-xs font-medium text-on-surface focus:outline-none focus:border-black"
+              >
+                <option value="">-- Select a Club Charter --</option>
+                {clubs.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name} ({c.refId})
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          <div className="flex justify-end gap-2 pt-2 border-t border-border-default">
+            <button
+              type="button"
+              onClick={() => setShowRoleModal(false)}
+              className="h-9 px-4 rounded-lg bg-surface-container text-on-surface text-xs font-semibold"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="h-9 px-5 rounded-lg bg-primary text-on-primary text-xs font-semibold shadow-sm hover:opacity-90"
+            >
+              Save Privileges
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Confirmation Modal */}
+      <Modal
+        isOpen={Boolean(confirmDialog)}
         onClose={() => setConfirmDialog(null)}
         title={confirmDialog?.title || 'Confirm Action'}
       >
         <div className="flex flex-col gap-4">
-          <p className="font-body-md text-on-surface-variant">
+          <p className="text-xs text-on-surface-variant leading-relaxed">
             {confirmDialog?.message}
           </p>
-          <div className="flex justify-end gap-2 pt-2 border-t border-outline-variant/20">
+          <div className="flex justify-end gap-2 pt-2 border-t border-border-default">
             <button
               type="button"
               onClick={() => setConfirmDialog(null)}
-              className="h-10 px-4 rounded-xl bg-surface-container text-on-surface font-label-sm font-semibold hover:bg-surface-container-high transition-colors"
+              className="h-9 px-4 rounded-lg bg-surface-container text-on-surface text-xs font-semibold"
             >
               Cancel
             </button>
             <button
               type="button"
               onClick={() => confirmDialog?.onConfirm()}
-              className="h-10 px-5 rounded-xl bg-primary text-on-primary font-label-sm font-semibold shadow-sm hover:opacity-95 transition-opacity"
+              className="h-9 px-4 rounded-lg bg-primary text-on-primary text-xs font-semibold shadow-sm hover:opacity-90"
             >
               {confirmDialog?.actionLabel || 'Confirm'}
             </button>
@@ -1845,3 +1872,5 @@ export const SuperAdminDashboard: React.FC = () => {
     </div>
   );
 };
+
+export default SuperAdminDashboard;

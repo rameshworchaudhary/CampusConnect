@@ -1,7 +1,7 @@
 export type Role = 'STUDENT' | 'CLUB_ADMIN' | 'SUPER_ADMIN';
 
 export interface User {
-  id: number;
+  id: string;
   fullName: string;
   email: string;
   studentId?: string;
@@ -9,12 +9,14 @@ export interface User {
   role: Role;
   isActive: boolean;
   isVerified: boolean;
-  assignedClubId?: number;
+  assignedClubId?: string;
   assignedClubName?: string;
+  avatarUrl?: string;
+  avatarPath?: string;
 }
 
 export interface Club {
-  id: number;
+  id: string;
   refId: string;
   name: string;
   category: string;
@@ -22,8 +24,12 @@ export interface Club {
   meetingSchedule?: string;
   meetingLocation?: string;
   facultyAdvisor?: string;
+  contactEmail?: string;
+  contactPhone?: string;
+  logoUrl?: string;
+  approvalStatus: 'PENDING' | 'APPROVED' | 'REJECTED';
   isPublished: boolean;
-  assignedAdminId?: number;
+  assignedAdminId?: string;
   assignedAdminName?: string;
   memberCount: number;
   pendingRequestCount: number;
@@ -31,10 +37,10 @@ export interface Club {
 }
 
 export interface Membership {
-  id: number;
-  clubId: number;
+  id: string;
+  clubId: string;
   clubName: string;
-  userId: number;
+  userId: string;
   userName: string;
   userEmail: string;
   studentId: string;
@@ -45,14 +51,15 @@ export interface Membership {
 }
 
 export interface EventItem {
-  id: number;
-  clubId?: number;
+  id: string;
+  clubId?: string;
   clubName?: string;
   title: string;
   description?: string;
   eventDate: string;
   location: string;
   eventLink?: string;
+  posterUrl?: string;
   capacity: number;
   registeredCount: number;
   isPublished: boolean;
@@ -62,8 +69,8 @@ export interface EventItem {
 }
 
 export interface AnnouncementItem {
-  id: number;
-  clubId?: number;
+  id: string;
+  clubId?: string;
   clubName?: string;
   title: string;
   content: string;
@@ -73,29 +80,8 @@ export interface AnnouncementItem {
   createdAt: string;
 }
 
-export interface LandingCms {
-  id?: number;
-  siteName: string;
-  heroHeading: string;
-  heroDescription: string;
-  statClubsLabel: string;
-  statClubsValue: string;
-  statStudentsLabel: string;
-  statStudentsValue: string;
-  statEventsLabel: string;
-  statEventsValue: string;
-  exploreButtonText: string;
-  viewEventsButtonText: string;
-  noticeBannerTitle: string;
-  noticeBannerText: string;
-  aboutText: string;
-  footerText: string;
-  featuredClubIds?: string;
-  upcomingEventIds?: string;
-}
-
 export interface AuditLogItem {
-  id: number;
+  id: string;
   actionType: string;
   actorEmail: string;
   actorRole: string;

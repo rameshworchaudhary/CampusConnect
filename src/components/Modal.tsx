@@ -13,7 +13,7 @@ export const Modal: React.FC<ModalProps> = ({
   onClose,
   title,
   children,
-  maxWidth = 'max-w-md',
+  maxWidth = 'max-w-lg',
 }) => {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -21,40 +21,59 @@ export const Modal: React.FC<ModalProps> = ({
         onClose();
       }
     };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    if (isOpen) {
+      document.body.style.overflow = 'hidden';
+      window.addEventListener('keydown', handleKeyDown);
+    }
+    return () => {
+      document.body.style.overflow = 'unset';
+      window.removeEventListener('keydown', handleKeyDown);
+    };
   }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-4 md:p-6 overflow-hidden">
       {/* Backdrop */}
       <div
-        className="fixed inset-0 bg-black/60 backdrop-blur-sm transition-opacity"
+        className="fixed inset-0 bg-black/60 backdrop-blur-sm transition-opacity animate-in fade-in duration-150"
         onClick={onClose}
+        aria-hidden="true"
       />
 
       {/* Modal Dialog Card */}
       <div
-        className={`relative w-full ${maxWidth} bg-surface-container-lowest border border-outline-variant/40 rounded-2xl shadow-2xl p-space-lg z-10 flex flex-col gap-space-sm max-h-[90vh] overflow-y-auto animate-in fade-in zoom-in-95 duration-150`}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="modal-title"
+        className={`relative w-full ${maxWidth} bg-surface-container-lowest border border-border-default rounded-2xl shadow-2xl z-10 flex flex-col max-h-[92vh] sm:max-h-[88vh] overflow-hidden animate-in fade-in zoom-in-95 duration-150`}
       >
-        <div className="flex items-center justify-between pb-space-xs border-b border-outline-variant/20">
-          <h2 className="font-headline-sm text-headline-sm text-on-surface font-semibold tracking-tight">
+        {/* Fixed Header */}
+        <div className="flex items-center justify-between px-4 sm:px-6 py-3.5 border-b border-border-default shrink-0 bg-surface-container-lowest">
+          <h2
+            id="modal-title"
+            className="text-sm sm:text-base md:text-lg text-on-surface font-semibold tracking-tight truncate pr-2"
+          >
             {title}
           </h2>
           <button
             type="button"
             onClick={onClose}
-            className="w-8 h-8 rounded-full flex items-center justify-center text-on-surface-variant hover:text-on-surface hover:bg-surface-container transition-colors"
+            className="w-9 h-9 min-w-[36px] min-h-[36px] rounded-lg flex items-center justify-center text-on-surface-variant hover:text-on-surface hover:bg-surface-container transition-colors shrink-0"
             aria-label="Close modal"
           >
             <span className="material-symbols-outlined text-[20px]">close</span>
           </button>
         </div>
 
-        <div className="py-1">{children}</div>
+        {/* Scrollable Content Container */}
+        <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-4 overscroll-contain focus:outline-none">
+          {children}
+        </div>
       </div>
     </div>
   );
 };
+
+export default Modal;

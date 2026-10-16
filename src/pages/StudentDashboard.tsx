@@ -3,13 +3,18 @@ import { Header } from '../components/Header';
 import { BottomNav } from '../components/BottomNav';
 import { Modal } from '../components/Modal';
 import { Toast } from '../components/Toast';
+import { ImageUploader } from '../components/ImageUploader';
 import { EventItem, AnnouncementItem, Membership } from '../types';
-import { apiClient } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate, Link } from 'react-router-dom';
+import { getStudentStats } from '../services/statsService';
+import { getUserRegisteredEvents, cancelEventRegistration } from '../services/eventService';
+import { getMembershipsForUser, cancelMembershipRequest } from '../services/membershipService';
+import { getPublicAnnouncements, markAnnouncementAsRead } from '../services/announcementService';
+import { updateProfile, changePassword } from '../services/authService';
 
 export const StudentDashboard: React.FC = () => {
-  const { user, isAuthenticated } = useAuth();
+  const { user, isAuthenticated, loading: authLoading, refreshUser } = useAuth();
   const navigate = useNavigate();
 
   const [stats, setStats] = useState({
@@ -27,77 +32,121 @@ export const StudentDashboard: React.FC = () => {
 
   // Settings & Profile Modals
   const [showProfileModal, setShowProfileModal] = useState(false);
+  const [profileName, setProfileName] = useState('');
+  const [profileStudentId, setProfileStudentId] = useState('');
+  const [profileDepartment, setProfileDepartment] = useState('');
+  const [profileAvatarUrl, setProfileAvatarUrl] = useState('');
+  const [profileAvatarPath, setProfileAvatarPath] = useState('');
+  const [profileSaving, setProfileSaving] = useState(false);
+
   const [showPasswordModal, setShowPasswordModal] = useState(false);
-  const [oldPassword, setOldPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [passwordError, setPasswordError] = useState('');
   const [passwordSuccess, setPasswordSuccess] = useState('');
 
   useEffect(() => {
+    if (authLoading) return;
     if (!isAuthenticated) {
       navigate('/login');
       return;
     }
-    if (user?.role !== 'STUDENT') {
-      navigate(user?.role === 'SUPER_ADMIN' ? '/admin' : '/club-admin');
+    if (user && user.role !== 'STUDENT') {
+      navigate(user.role === 'SUPER_ADMIN' ? '/admin' : '/club-admin');
       return;
     }
-    fetchDashboardData();
-  }, [isAuthenticated, user?.role]);
+    if (user) {
+      setProfileName(user.fullName || '');
+      setProfileStudentId(user.studentId || '');
+      setProfileDepartment(user.department || '');
+      setProfileAvatarUrl(user.avatarUrl || '');
+      setProfileAvatarPath(user.avatarPath || '');
+      fetchDashboardData();
+    }
+  }, [authLoading, isAuthenticated, user?.role, user?.id]);
 
   const fetchDashboardData = async () => {
+    if (!user) return;
     try {
       setLoading(true);
-      const [statsRes, eventsRes, annRes, memRes] = await Promise.all([
-        apiClient.get('/student/stats').catch(() => null),
-        apiClient.get('/student/my-events').catch(() => null),
-        apiClient.get('/announcements/public').catch(() => null),
-        apiClient.get('/student/memberships').catch(() => null),
+      const [statsData, eventsData, annData, memData] = await Promise.all([
+        getStudentStats(user.id),
+        getUserRegisteredEvents(user.id),
+        getPublicAnnouncements(user.id),
+        getMembershipsForUser(user.id),
       ]);
 
-      if (statsRes?.data?.data) setStats(statsRes.data.data);
-      if (eventsRes?.data?.data) setRegisteredEvents(eventsRes.data.data);
-      if (annRes?.data?.data) setAnnouncements(annRes.data.data);
-      if (memRes?.data?.data) setMemberships(memRes.data.data);
-    } catch {
-      // Ignored
+      setStats(statsData);
+      setRegisteredEvents(eventsData);
+      setAnnouncements(annData);
+      setMemberships(memData);
+    } catch (err: any) {
+      console.warn('Dashboard data fetch error:', err);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleCancelRegistration = async (eventId: number) => {
+  const handleCancelRegistration = async (eventId: string) => {
+    if (!user) return;
     try {
-      await apiClient.delete(`/student/events/${eventId}/cancel`);
+      await cancelEventRegistration(eventId, user.id, { email: user.email, role: user.role });
       setToastMessage('Event registration cancelled.');
       setRegisteredEvents((prev) => prev.filter((e) => e.id !== eventId));
       setStats((prev) => ({ ...prev, registeredEvents: Math.max(0, prev.registeredEvents - 1) }));
     } catch (err: any) {
-      setToastMessage(err.response?.data?.message || 'Failed to cancel registration.');
+      setToastMessage(err.message || 'Failed to cancel registration.');
     }
   };
 
-  const handleCancelMembership = async (clubId: number) => {
+  const handleCancelMembership = async (clubId: string) => {
+    if (!user) return;
     try {
-      await apiClient.delete(`/student/clubs/${clubId}/cancel-request`);
-      setToastMessage('Membership request cancelled.');
+      await cancelMembershipRequest(clubId, user.id, { email: user.email, role: user.role });
+      setToastMessage('Membership request withdrawn.');
       setMemberships((prev) => prev.filter((m) => m.clubId !== clubId));
       setStats((prev) => ({ ...prev, pendingClubRequests: Math.max(0, prev.pendingClubRequests - 1) }));
     } catch (err: any) {
-      setToastMessage(err.response?.data?.message || 'Failed to cancel request.');
+      setToastMessage(err.message || 'Failed to cancel request.');
     }
   };
 
-  const handleMarkAnnouncementRead = async (announcementId: number) => {
+  const handleMarkAnnouncementRead = async (announcementId: string) => {
+    if (!user) return;
     try {
-      await apiClient.post(`/student/announcements/${announcementId}/read`);
+      await markAnnouncementAsRead(announcementId, user.id);
       setAnnouncements((prev) =>
         prev.map((a) => (a.id === announcementId ? { ...a, isRead: true } : a))
       );
       setStats((prev) => ({ ...prev, unreadAnnouncements: Math.max(0, prev.unreadAnnouncements - 1) }));
       setToastMessage('Announcement marked as read.');
     } catch (err: any) {
-      setToastMessage(err.response?.data?.message || 'Error updating status.');
+      setToastMessage(err.message || 'Error updating status.');
+    }
+  };
+
+  const handleUpdateProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) return;
+    try {
+      setProfileSaving(true);
+      await updateProfile(
+        user.id,
+        {
+          fullName: profileName.trim(),
+          studentId: profileStudentId.trim() || undefined,
+          department: profileDepartment.trim() || undefined,
+          avatarPath: profileAvatarPath,
+        },
+        { email: user.email, role: user.role }
+      );
+      await refreshUser();
+      setToastMessage('Profile updated successfully.');
+      setShowProfileModal(false);
+    } catch (err: any) {
+      setToastMessage(err.message || 'Failed to update profile.');
+    } finally {
+      setProfileSaving(false);
     }
   };
 
@@ -105,19 +154,21 @@ export const StudentDashboard: React.FC = () => {
     e.preventDefault();
     setPasswordError('');
     setPasswordSuccess('');
+    if (newPassword !== confirmPassword) {
+      setPasswordError('Passwords do not match.');
+      return;
+    }
+
     try {
-      await apiClient.post('/auth/change-password', { oldPassword, newPassword });
-      setPasswordSuccess('Password successfully changed.');
-      setOldPassword('');
+      await changePassword(newPassword);
+      setPasswordSuccess('Password successfully updated.');
       setNewPassword('');
+      setConfirmPassword('');
       setTimeout(() => setShowPasswordModal(false), 1500);
     } catch (err: any) {
-      setPasswordError(err.response?.data?.message || 'Failed to change password.');
+      setPasswordError(err.message || 'Failed to update password.');
     }
   };
-
-  const pendingRequestsList = memberships.filter((m) => m.status === 'PENDING');
-  const activeMembershipsList = memberships.filter((m) => m.status === 'APPROVED');
 
   return (
     <div className="bg-surface font-body-md text-on-surface antialiased flex flex-col min-h-screen">
@@ -125,12 +176,12 @@ export const StudentDashboard: React.FC = () => {
 
       <main className="flex-1 w-full pt-20 pb-24 md:pb-12 bg-surface px-4 sm:px-6 lg:px-8">
         <div className="max-w-7xl mx-auto flex flex-col gap-6">
-          {/* Welcome / Identification Header */}
+          {/* Welcome Header */}
           <div className="bg-surface-container-lowest p-5 sm:p-6 rounded-2xl border border-border-default shadow-sm flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div className="flex flex-col gap-1">
               <div className="flex items-center gap-2">
                 <span className="font-label-caps text-label-caps uppercase tracking-wider text-on-surface-variant font-bold text-[11px]">
-                  Academic Session 2026
+                  Campus Portal
                 </span>
                 <span className="inline-flex items-center gap-1 text-xs bg-surface-container text-primary font-semibold px-2 py-0.5 rounded-full border border-border-default">
                   <span className="w-1.5 h-1.5 rounded-full bg-primary"></span>
@@ -147,8 +198,16 @@ export const StudentDashboard: React.FC = () => {
               </p>
             </div>
 
-            {/* Quick action buttons on banner */}
-            <div className="flex items-center gap-2 shrink-0">
+            {/* Quick Action Buttons */}
+            <div className="flex items-center gap-2 shrink-0 flex-wrap">
+              <button
+                type="button"
+                onClick={() => setShowProfileModal(true)}
+                className="h-10 px-3.5 bg-surface-container text-on-surface text-xs font-semibold rounded-xl flex items-center gap-1.5 hover:bg-surface-container-high transition-colors border border-border-default"
+              >
+                <span className="material-symbols-outlined text-[16px]">edit</span>
+                <span>Edit Profile</span>
+              </button>
               <Link
                 to="/clubs"
                 className="h-10 px-4 bg-primary text-on-primary text-xs sm:text-sm font-semibold rounded-xl flex items-center gap-2 hover:opacity-90 shadow-sm transition-opacity"
@@ -166,7 +225,7 @@ export const StudentDashboard: React.FC = () => {
             </div>
           </div>
 
-          {/* Compact Responsive Metrics Grid */}
+          {/* Real Metrics Grid (No random data) */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
             <div className="bg-surface-container-lowest p-4 rounded-xl border border-border-default shadow-sm flex flex-col justify-between min-h-[5.5rem]">
               <div className="flex items-center justify-between text-on-surface-variant">
@@ -177,7 +236,7 @@ export const StudentDashboard: React.FC = () => {
               </div>
               <div className="flex items-baseline gap-1.5 mt-2">
                 <span className="text-2xl sm:text-3xl text-primary font-bold tabular-nums">
-                  {stats.enrolledClubs}
+                  {loading ? '...' : stats.enrolledClubs}
                 </span>
                 <span className="text-xs text-on-surface-variant">Active</span>
               </div>
@@ -192,7 +251,7 @@ export const StudentDashboard: React.FC = () => {
               </div>
               <div className="flex items-baseline gap-1.5 mt-2">
                 <span className="text-2xl sm:text-3xl text-primary font-bold tabular-nums">
-                  {stats.pendingClubRequests}
+                  {loading ? '...' : stats.pendingClubRequests}
                 </span>
                 <span className="text-xs text-on-surface-variant">In Review</span>
               </div>
@@ -207,7 +266,7 @@ export const StudentDashboard: React.FC = () => {
               </div>
               <div className="flex items-baseline gap-1.5 mt-2">
                 <span className="text-2xl sm:text-3xl text-primary font-bold tabular-nums">
-                  {stats.registeredEvents}
+                  {loading ? '...' : stats.registeredEvents}
                 </span>
                 <span className="text-xs text-on-surface-variant">Confirmed</span>
               </div>
@@ -222,18 +281,18 @@ export const StudentDashboard: React.FC = () => {
               </div>
               <div className="flex items-baseline gap-1.5 mt-2">
                 <span className="text-2xl sm:text-3xl text-primary font-bold tabular-nums">
-                  {stats.unreadAnnouncements}
+                  {loading ? '...' : stats.unreadAnnouncements}
                 </span>
                 <span className="text-xs text-on-surface-variant">Unread</span>
               </div>
             </div>
           </div>
 
-          {/* 2-Column Responsive Workspace Layout */}
+          {/* 2-Column Responsive Layout */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
             {/* Left Column (8 cols): My Events & Memberships */}
             <div className="lg:col-span-8 flex flex-col gap-6">
-              {/* Section: My Registered Events */}
+              {/* My Registered Events */}
               <section className="bg-surface-container-lowest rounded-2xl border border-border-default p-5 sm:p-6 shadow-sm flex flex-col gap-4">
                 <div className="flex items-center justify-between pb-3 border-b border-border-default">
                   <div className="flex items-center gap-2">
@@ -301,7 +360,7 @@ export const StudentDashboard: React.FC = () => {
                 </div>
               </section>
 
-              {/* Section: Membership Requests Tracker */}
+              {/* Club Membership Status */}
               <section className="bg-surface-container-lowest rounded-2xl border border-border-default p-5 sm:p-6 shadow-sm flex flex-col gap-4">
                 <div className="flex items-center justify-between pb-3 border-b border-border-default">
                   <div className="flex items-center gap-2">
@@ -381,7 +440,7 @@ export const StudentDashboard: React.FC = () => {
               </section>
             </div>
 
-            {/* Right Column (4 cols): Announcements, Quick Actions, Profile */}
+            {/* Right Column (4 cols): Announcements & Security */}
             <div className="lg:col-span-4 flex flex-col gap-6">
               {/* Campus Announcements */}
               <section className="bg-surface-container-lowest rounded-2xl border border-border-default p-5 shadow-sm flex flex-col gap-3">
@@ -405,7 +464,7 @@ export const StudentDashboard: React.FC = () => {
                   </p>
                 ) : (
                   <div className="flex flex-col gap-3">
-                    {announcements.slice(0, 4).map((ann) => (
+                    {announcements.slice(0, 5).map((ann) => (
                       <div
                         key={ann.id}
                         className="p-3 rounded-xl bg-surface-container-low border border-border-default flex flex-col gap-2"
@@ -432,7 +491,7 @@ export const StudentDashboard: React.FC = () => {
                               Mark Read
                             </button>
                           ) : (
-                            <span>Read</span>
+                            <span className="text-on-surface-variant">Read</span>
                           )}
                         </div>
                       </div>
@@ -441,7 +500,7 @@ export const StudentDashboard: React.FC = () => {
                 )}
               </section>
 
-              {/* Account Security & Settings */}
+              {/* Account Profile & Security */}
               <div className="bg-surface-container-lowest rounded-2xl border border-border-default shadow-sm p-5 flex flex-col gap-3">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-xl bg-surface-container flex items-center justify-center text-primary shrink-0">
@@ -449,27 +508,113 @@ export const StudentDashboard: React.FC = () => {
                   </div>
                   <div className="flex flex-col min-w-0">
                     <span className="font-semibold text-sm text-on-surface truncate">
-                      Security &amp; Password
+                      Profile &amp; Credentials
                     </span>
                     <span className="text-xs text-on-surface-variant truncate">
-                      Update your account password
+                      Manage your student details
                     </span>
                   </div>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => setShowPasswordModal(true)}
-                  className="w-full h-9 rounded-lg bg-surface-container text-on-surface text-xs font-semibold hover:bg-surface-container-high transition-colors border border-border-default flex items-center justify-center gap-1.5"
-                >
-                  <span className="material-symbols-outlined text-[16px]">lock_reset</span>
-                  <span>Change Password</span>
-                </button>
+                <div className="flex flex-col gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setShowProfileModal(true)}
+                    className="w-full h-9 rounded-lg bg-surface-container text-on-surface text-xs font-semibold hover:bg-surface-container-high transition-colors border border-border-default flex items-center justify-center gap-1.5"
+                  >
+                    <span className="material-symbols-outlined text-[16px]">person</span>
+                    <span>Edit Profile Details</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowPasswordModal(true)}
+                    className="w-full h-9 rounded-lg bg-surface-container text-on-surface text-xs font-semibold hover:bg-surface-container-high transition-colors border border-border-default flex items-center justify-center gap-1.5"
+                  >
+                    <span className="material-symbols-outlined text-[16px]">lock_reset</span>
+                    <span>Change Password</span>
+                  </button>
+                </div>
               </div>
             </div>
           </div>
         </div>
       </main>
+
+      {/* Edit Profile Modal */}
+      <Modal
+        isOpen={showProfileModal}
+        onClose={() => setShowProfileModal(false)}
+        title="Edit Student Profile"
+      >
+        <form onSubmit={handleUpdateProfile} className="flex flex-col gap-3">
+          <div className="flex flex-col gap-1">
+            <label className="font-label-caps text-label-caps text-on-surface-variant uppercase font-bold text-[11px]">
+              Full Name *
+            </label>
+            <input
+              type="text"
+              required
+              value={profileName}
+              onChange={(e) => setProfileName(e.target.value)}
+              className="h-10 px-3 bg-surface-container-lowest border border-border-default rounded-lg text-xs font-medium text-on-surface focus:outline-none focus:border-black"
+            />
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <label className="font-label-caps text-label-caps text-on-surface-variant uppercase font-bold text-[11px]">
+              Student ID
+            </label>
+            <input
+              type="text"
+              value={profileStudentId}
+              onChange={(e) => setProfileStudentId(e.target.value)}
+              className="h-10 px-3 bg-surface-container-lowest border border-border-default rounded-lg text-xs font-medium text-on-surface focus:outline-none focus:border-black"
+            />
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <label className="font-label-caps text-label-caps text-on-surface-variant uppercase font-bold text-[11px]">
+              Department
+            </label>
+            <input
+              type="text"
+              value={profileDepartment}
+              onChange={(e) => setProfileDepartment(e.target.value)}
+              className="h-10 px-3 bg-surface-container-lowest border border-border-default rounded-lg text-xs font-medium text-on-surface focus:outline-none focus:border-black"
+            />
+          </div>
+
+          <div className="flex flex-col gap-1 pt-1">
+            <ImageUploader
+              bucket="avatars"
+              folderId={user?.id}
+              label="Profile Picture (Avatar)"
+              currentImageUrl={profileAvatarUrl}
+              onImageUploaded={(url, path) => { setProfileAvatarUrl(url); setProfileAvatarPath(path); }}
+              onImageRemoved={() => { setProfileAvatarUrl(''); setProfileAvatarPath(''); }}
+              aspectRatio="square"
+              helperText="JPG, PNG or WebP image (max 5 MB)"
+            />
+          </div>
+
+          <div className="flex justify-end gap-2 pt-2 border-t border-border-default">
+            <button
+              type="button"
+              onClick={() => setShowProfileModal(false)}
+              className="h-9 px-4 rounded-lg bg-surface-container text-on-surface text-xs font-semibold"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={profileSaving}
+              className="h-9 px-4 rounded-lg bg-primary text-on-primary text-xs font-semibold shadow-sm hover:opacity-90 disabled:opacity-50"
+            >
+              {profileSaving ? 'Saving...' : 'Save Profile'}
+            </button>
+          </div>
+        </form>
+      </Modal>
 
       {/* Change Password Modal */}
       <Modal
@@ -479,28 +624,15 @@ export const StudentDashboard: React.FC = () => {
       >
         <form onSubmit={handleChangePassword} className="flex flex-col gap-3">
           {passwordError && (
-            <div className="p-2.5 bg-surface-container text-on-surface font-body-sm rounded-xl border border-border-default">
+            <div className="p-2.5 bg-surface-container text-on-surface font-body-sm rounded-xl border border-border-default text-xs">
               {passwordError}
             </div>
           )}
           {passwordSuccess && (
-            <div className="p-2.5 bg-secondary-container text-on-surface font-body-sm rounded-xl">
+            <div className="p-2.5 bg-secondary-container text-on-surface font-body-sm rounded-xl text-xs">
               {passwordSuccess}
             </div>
           )}
-
-          <div className="flex flex-col gap-1">
-            <label className="font-label-caps text-label-caps text-on-surface-variant uppercase font-bold text-[11px]">
-              Current Password
-            </label>
-            <input
-              type="password"
-              required
-              value={oldPassword}
-              onChange={(e) => setOldPassword(e.target.value)}
-              className="h-10 px-3 bg-surface-container-lowest border border-border-default rounded-lg font-body-md text-on-surface focus:outline-none focus:border-black"
-            />
-          </div>
 
           <div className="flex flex-col gap-1">
             <label className="font-label-caps text-label-caps text-on-surface-variant uppercase font-bold text-[11px]">
@@ -512,7 +644,21 @@ export const StudentDashboard: React.FC = () => {
               minLength={6}
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
-              className="h-10 px-3 bg-surface-container-lowest border border-border-default rounded-lg font-body-md text-on-surface focus:outline-none focus:border-black"
+              className="h-10 px-3 bg-surface-container-lowest border border-border-default rounded-lg text-xs font-medium text-on-surface focus:outline-none focus:border-black"
+            />
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <label className="font-label-caps text-label-caps text-on-surface-variant uppercase font-bold text-[11px]">
+              Confirm New Password
+            </label>
+            <input
+              type="password"
+              required
+              minLength={6}
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              className="h-10 px-3 bg-surface-container-lowest border border-border-default rounded-lg text-xs font-medium text-on-surface focus:outline-none focus:border-black"
             />
           </div>
 
@@ -539,3 +685,5 @@ export const StudentDashboard: React.FC = () => {
     </div>
   );
 };
+
+export default StudentDashboard;

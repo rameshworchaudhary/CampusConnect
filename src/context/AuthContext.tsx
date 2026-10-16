@@ -1,15 +1,16 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import axios from 'axios';
-import { apiClient } from '../api/client';
-import { Role, User } from '../types';
+import { User, Role } from '../types';
+import { getCurrentUser, signOut as supabaseSignOut } from '../services/authService';
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
 
 interface AuthContextType {
   user: User | null;
   token: string | null;
   role: Role | null;
   isAuthenticated: boolean;
+  loading: boolean;
   login: (token: string, user: User) => void;
-  logout: () => void;
+  logout: () => Promise<void>;
   setUser: (user: User | null) => void;
   refreshUser: () => Promise<void>;
 }
@@ -17,66 +18,112 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [token, setToken] = useState<string | null>(() => localStorage.getItem('cc_auth_token'));
-  const [user, setUser] = useState<User | null>(() => {
-    const saved = localStorage.getItem('cc_auth_user');
-    if (!saved) return null;
-
-    try {
-      return JSON.parse(saved) as User;
-    } catch {
-      localStorage.removeItem('cc_auth_user');
-      return null;
-    }
-  });
+  const [token, setToken] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [user, setUser] = useState<User | null>(null);
 
   const login = (newToken: string, newUser: User) => {
-    localStorage.setItem('cc_auth_token', newToken);
-    localStorage.setItem('cc_auth_user', JSON.stringify(newUser));
     setToken(newToken);
     setUser(newUser);
   };
 
-  const logout = () => {
-    localStorage.removeItem('cc_auth_token');
-    localStorage.removeItem('cc_auth_user');
+  const logout = async () => {
+    try {
+      await supabaseSignOut();
+    } catch (err) {
+      console.warn('Sign out warning:', err);
+    }
     setToken(null);
     setUser(null);
   };
 
   const refreshUser = async () => {
-    if (!token) return;
     try {
-      const response = await apiClient.get('/auth/me');
-      if (response.data?.data) {
-        setUser(response.data.data);
-        localStorage.setItem('cc_auth_user', JSON.stringify(response.data.data));
+      const refreshed = await getCurrentUser();
+      if (refreshed) {
+        setUser(refreshed);
+      } else {
+        setUser(null);
+        setToken(null);
       }
-    } catch (error) {
-      if (axios.isAxiosError(error) && error.response?.status === 401) {
-        logout();
-        return;
-      }
-
-      console.error('Unable to refresh the authenticated user.', error);
+    } catch (err) {
+      console.error('Error refreshing user session:', err);
     }
   };
 
   useEffect(() => {
-    if (token) refreshUser();
-  }, [token]);
+    let mounted = true;
 
-  useEffect(() => {
-    const handleUnauthorized = () => {
-      logout();
+    const initAuth = async () => {
+      try {
+        if (isSupabaseConfigured) {
+          const { data } = await supabase.auth.getSession();
+          if (data.session) {
+            setToken(data.session.access_token);
+            const profile = await getCurrentUser();
+            if (mounted && profile) {
+              setUser(profile);
+            }
+          } else {
+            if (mounted) {
+              setToken(null);
+              setUser(null);
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('Auth initialization error:', err);
+      } finally {
+        if (mounted) setLoading(false);
+      }
     };
 
-    window.addEventListener('cc:unauthorized', handleUnauthorized);
-    return () => window.removeEventListener('cc:unauthorized', handleUnauthorized);
+    initAuth();
+
+    if (isSupabaseConfigured) {
+      const { data: authListener } = supabase.auth.onAuthStateChange(
+        async (event, session) => {
+          if (!mounted) return;
+          if (session) {
+            setToken(session.access_token);
+            const refreshed = await getCurrentUser();
+            if (mounted && refreshed) {
+              setUser(refreshed);
+            }
+          } else if (event === 'SIGNED_OUT') {
+            if (mounted) {
+              setToken(null);
+              setUser(null);
+            }
+          }
+        }
+      );
+
+      return () => {
+        mounted = false;
+        authListener.subscription.unsubscribe();
+      };
+    }
+
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, token, role: user?.role || null, isAuthenticated: !!token && !!user, login, logout, setUser, refreshUser }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        token,
+        role: user?.role || null,
+        isAuthenticated: Boolean(user),
+        loading,
+        login,
+        logout,
+        setUser,
+        refreshUser,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

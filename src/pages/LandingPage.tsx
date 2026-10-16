@@ -1,31 +1,39 @@
-﻿import React from 'react';
-import { useNavigate } from 'react-router-dom';
+import React from 'react';
+import { useNavigate, Link } from 'react-router-dom';
+import { Header } from '../components/Header';
+import { BottomNav } from '../components/BottomNav';
 import { useAuth } from '../context/AuthContext';
 
 const featureCards = [
   {
-    title: 'Club Profiles',
-    description: 'Every club gets a page with its details, members and activities.',
+    title: 'Club Directory',
+    description: 'Explore verified student associations, academic chapters, and engineering teams.',
+    icon: 'groups',
   },
   {
-    title: 'Member Registration',
-    description: 'Students request to join and clubs approve them.',
+    title: 'Membership Workflow',
+    description: 'Students submit join requests and club officers review them directly.',
+    icon: 'assignment_ind',
   },
   {
-    title: 'Event Creation',
-    description: 'Clubs create events and students register in one tap.',
+    title: 'Event Management',
+    description: 'Officers publish events with poster artwork and students RSVP with capacity limits.',
+    icon: 'calendar_month',
   },
   {
-    title: 'Announcements',
-    description: 'Club and campus updates reach the right people.',
+    title: 'Targeted Bulletins',
+    description: 'Campus notices and club announcements reach the right students immediately.',
+    icon: 'campaign',
   },
   {
-    title: 'Role-Based Access',
-    description: 'Students, club admins and the admin each see what they need.',
+    title: 'Role-Based Governance',
+    description: 'Dedicated workspaces for students, club administrators, and campus officials.',
+    icon: 'admin_panel_settings',
   },
   {
-    title: 'Admin Dashboard',
-    description: 'The admin approves clubs and oversees students and events.',
+    title: 'Audit & Accountability',
+    description: 'Super administrators oversee memberships, charters, roles, and platform activity.',
+    icon: 'history_toggle_drop_down',
   },
 ];
 
@@ -33,17 +41,17 @@ const steps = [
   {
     number: '1.',
     title: 'Create an account',
-    description: 'Sign up as a student or register a club.',
+    description: 'Sign up as a student or submit a club charter registration for official recognition.',
   },
   {
     number: '2.',
-    title: 'Admin approval',
-    description: 'New clubs are reviewed and approved by the admin.',
+    title: 'Administrative review',
+    description: 'New clubs and role promotions are reviewed and approved by administrators.',
   },
   {
     number: '3.',
-    title: 'Join and participate',
-    description: 'Browse clubs, register for events and stay updated.',
+    title: 'Participate and engage',
+    description: 'Browse campus clubs, RSVP to events, and track active memberships in real time.',
   },
 ];
 
@@ -57,210 +65,117 @@ export const LandingPage: React.FC = () => {
       navigate(route);
       return;
     }
-
-    navigate('/login');
-  };
-
-  const handleSecondaryAction = () => {
     navigate('/register');
   };
 
   return (
-    <div style={{ minHeight: '100vh', background: '#faf9f5', color: '#111111', fontFamily: 'Manrope, sans-serif' }}>
-      <header
-        style={{
-          maxWidth: 1360,
-          margin: '0 auto',
-          padding: '28px 64px 18px',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: 24,
-        }}
-      >
-        <div style={{ fontSize: 22, fontWeight: 800 }}>
-          Campus<span style={{ fontWeight: 400 }}>Connect</span>
-        </div>
+    <div className="min-h-screen bg-surface font-body-md text-on-surface flex flex-col antialiased">
+      <Header subtitle="Campus Life Hub" />
 
-        <nav style={{ display: 'flex', alignItems: 'center', gap: 28, fontSize: 15 }}>
-          <a href="#" style={{ color: '#111111', textDecoration: 'none' }}>Clubs</a>
-          <a href="#" style={{ color: '#111111', textDecoration: 'none' }}>Events</a>
-          <a href="#how-it-works" style={{ color: '#111111', textDecoration: 'none' }}>How it works</a>
-          <button
-            type="button"
-            onClick={() => navigate('/login')}
-            style={{
-              background: '#fff',
-              color: '#000',
-              border: '1px solid #000',
-              borderRadius: 10,
-              padding: '10px 16px',
-              font: '600 14px Manrope, sans-serif',
-              cursor: 'pointer',
-            }}
-          >
-            Log In
-          </button>
-          <button
-            type="button"
-            onClick={handleSecondaryAction}
-            style={{
-              background: '#000',
-              color: '#fff',
-              border: '1px solid #000',
-              borderRadius: 10,
-              padding: '10px 16px',
-              font: '600 14px Manrope, sans-serif',
-              cursor: 'pointer',
-            }}
-          >
-            Sign Up
-          </button>
-        </nav>
-      </header>
-
-      <main style={{ maxWidth: 1360, margin: '0 auto', padding: '0 64px 40px' }}>
-        <section
-          style={{
-            display: 'flex',
-            gap: 48,
-            alignItems: 'center',
-            padding: '80px 0 60px',
-          }}
-        >
-          <div style={{ flex: 1 }}>
-            <h1 style={{ margin: 0, fontSize: 56, lineHeight: 1.1, fontWeight: 800 }}>
+      {/* Main Content */}
+      <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 pt-20 sm:pt-24 pb-24 md:pb-16 flex flex-col gap-10 sm:gap-14">
+        {/* Hero Section */}
+        <section className="flex flex-col lg:flex-row items-center gap-8 lg:gap-12 py-2 sm:py-6">
+          <div className="flex-1 flex flex-col gap-4 text-left">
+            <div className="inline-flex items-center gap-2 self-start px-3 py-1 rounded-full bg-surface-container border border-border-default text-[11px] font-semibold text-primary uppercase tracking-wider">
+              <span className="w-1.5 h-1.5 rounded-full bg-primary"></span>
+              <span>Academic Session 2026</span>
+            </div>
+            <h1 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold text-on-surface tracking-tight leading-tight">
               Every campus club, one place.
             </h1>
-            <p
-              style={{
-                fontSize: 18,
-                lineHeight: 1.6,
-                margin: '20px 0 32px',
-                maxWidth: 520,
-                color: '#222222',
-              }}
-            >
-              Discover clubs, register as a member, join events and never miss an announcement. Clubs get their own space to manage everything.
+            <p className="text-xs sm:text-sm md:text-base text-on-surface-variant max-w-xl leading-relaxed">
+              Discover official student organizations, register for memberships, RSVP to campus events, and manage club operations securely.
             </p>
 
-            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+            <div className="flex items-center gap-3 pt-2 flex-wrap">
               <button
                 type="button"
                 onClick={handlePrimaryAction}
-                style={{
-                  background: '#000',
-                  color: '#fff',
-                  border: '1px solid #000',
-                  borderRadius: 10,
-                  padding: '16px 24px',
-                  font: '600 16px Manrope, sans-serif',
-                  cursor: 'pointer',
-                }}
+                className="h-11 px-5 rounded-xl bg-primary text-on-primary text-xs sm:text-sm font-semibold shadow-sm hover:opacity-90 active:scale-95 transition-all"
               >
-                {isAuthenticated ? 'Go to Dashboard' : 'Join as Student'}
+                {isAuthenticated ? 'Go to Workspace' : 'Join as Student'}
               </button>
-              <button
-                type="button"
-                onClick={handleSecondaryAction}
-                style={{
-                  background: '#fff',
-                  color: '#000',
-                  border: '1px solid #000',
-                  borderRadius: 10,
-                  padding: '16px 24px',
-                  font: '600 16px Manrope, sans-serif',
-                  cursor: 'pointer',
-                }}
+              <Link
+                to="/clubs"
+                className="h-11 px-5 rounded-xl bg-surface-container text-on-surface text-xs sm:text-sm font-semibold border border-border-default hover:bg-surface-container-high transition-colors flex items-center justify-center"
               >
-                Register your Club
-              </button>
+                Explore Clubs Directory
+              </Link>
             </div>
           </div>
 
-          <div
-            style={{
-              flex: 1,
-              height: 360,
-              border: '1px solid #000',
-              borderRadius: 20,
-              background: '#000',
-              color: '#fff',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              overflow: 'hidden',
-            }}
-          >
+          <div className="w-full lg:flex-1 max-w-md lg:max-w-none h-60 sm:h-80 rounded-2xl border border-border-default bg-surface-container-low overflow-hidden shadow-sm flex items-center justify-center relative">
             <img
               src="/campus-connect-hero.png"
-              alt="CampusConnect illustration showing campus clubs, events, and announcements"
-              style={{
-                width: '100%',
-                height: '100%',
-                objectFit: 'cover',
-                display: 'block',
-              }}
+              alt="CampusConnect illustration showing campus clubs and events"
+              className="w-full h-full object-cover"
             />
           </div>
         </section>
 
-        <section
-          style={{
-            padding: '40px 64px',
-            background: '#000',
-            color: '#fff',
-            borderRadius: 0,
-          }}
-        >
-          <h2 style={{ margin: '0 0 24px', fontSize: 28 }}>What you can do</h2>
+        {/* Feature Cards Grid */}
+        <section className="bg-surface-container-low p-5 sm:p-8 lg:p-10 rounded-2xl border border-border-default flex flex-col gap-6">
+          <div>
+            <span className="font-label-caps text-label-caps text-primary uppercase font-bold text-[11px]">
+              Platform Capabilities
+            </span>
+            <h2 className="text-lg sm:text-xl md:text-2xl font-bold text-on-surface mt-1">
+              Purpose-built for institutional student life
+            </h2>
+          </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 16 }}>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
             {featureCards.map((feature) => (
               <div
                 key={feature.title}
-                style={{
-                  border: '1px solid #fff',
-                  borderRadius: 14,
-                  padding: 24,
-                  background: '#000',
-                }}
+                className="bg-surface-container-lowest p-4 sm:p-5 rounded-xl border border-border-default flex flex-col gap-2 shadow-sm"
               >
-                <div style={{ fontWeight: 800, fontSize: 17 }}>{feature.title}</div>
-                <div style={{ fontSize: 14, marginTop: 8, lineHeight: 1.5, color: '#f3f3f3' }}>{feature.description}</div>
+                <div className="w-8 h-8 rounded-lg bg-surface-container flex items-center justify-center text-primary border border-border-default shrink-0">
+                  <span className="material-symbols-outlined text-[18px]">{feature.icon}</span>
+                </div>
+                <h3 className="font-bold text-sm text-on-surface">{feature.title}</h3>
+                <p className="text-xs text-on-surface-variant leading-relaxed">{feature.description}</p>
               </div>
             ))}
           </div>
         </section>
 
-        <section id="how-it-works" style={{ padding: '64px 0 40px' }}>
-          <h2 style={{ margin: '0 0 24px', fontSize: 28 }}>How it works</h2>
+        {/* How It Works Section */}
+        <section id="how-it-works" className="flex flex-col gap-6">
+          <div>
+            <span className="font-label-caps text-label-caps text-primary uppercase font-bold text-[11px]">
+              Simple Onboarding
+            </span>
+            <h2 className="text-lg sm:text-xl md:text-2xl font-bold text-on-surface mt-1">
+              How CampusConnect works
+            </h2>
+          </div>
 
-          <div style={{ display: 'flex', gap: 24 }}>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6">
             {steps.map((step) => (
-              <div key={step.title} style={{ flex: 1, borderTop: '3px solid #000', paddingTop: 14 }}>
-                <div style={{ fontWeight: 800 }}>{step.number} {step.title}</div>
-                <div style={{ fontSize: 14, marginTop: 6, lineHeight: 1.5 }}>{step.description}</div>
+              <div key={step.title} className="bg-surface-container-lowest p-5 rounded-xl border border-border-default flex flex-col gap-2">
+                <span className="font-bold text-sm text-primary">{step.number} {step.title}</span>
+                <p className="text-xs text-on-surface-variant leading-relaxed">{step.description}</p>
               </div>
             ))}
           </div>
         </section>
       </main>
 
-      <footer
-        style={{
-          maxWidth: 1360,
-          margin: '0 auto',
-          padding: '24px 64px 40px',
-          borderTop: '1px solid #000',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          fontSize: 13,
-        }}
-      >
-        <span>© 2025 CampusConnect</span>
+      {/* Footer */}
+      <footer className="border-t border-border-default py-6 px-4 sm:px-6 lg:px-8 bg-surface">
+        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-on-surface-variant">
+          <span>CampusConnect — Campus Organization &amp; Event Management</span>
+          <div className="flex items-center gap-4">
+            <Link to="/clubs" className="hover:text-primary">Clubs</Link>
+            <Link to="/events" className="hover:text-primary">Events</Link>
+            <Link to="/login" className="hover:text-primary">Sign In</Link>
+          </div>
+        </div>
       </footer>
+
+      <BottomNav />
     </div>
   );
 };
