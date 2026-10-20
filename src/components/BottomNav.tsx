@@ -29,7 +29,7 @@ export const BottomNav: React.FC = () => {
           className={({ isActive }) =>
             `flex flex-col items-center justify-center flex-1 h-full min-h-[44px] gap-1 transition-colors select-none ${
               isActive
-                ? 'text-primary font-semibold'
+                ? 'bg-accent text-on-accent font-semibold rounded-lg mx-1 my-1'
                 : 'text-on-surface-variant hover:text-on-surface'
             }`
           }
@@ -44,7 +44,7 @@ export const BottomNav: React.FC = () => {
           className={({ isActive }) =>
             `flex flex-col items-center justify-center flex-1 h-full min-h-[44px] gap-1 transition-colors select-none ${
               isActive
-                ? 'text-primary font-semibold'
+                ? 'bg-accent text-on-accent font-semibold rounded-lg mx-1 my-1'
                 : 'text-on-surface-variant hover:text-on-surface'
             }`
           }
@@ -59,7 +59,7 @@ export const BottomNav: React.FC = () => {
           className={({ isActive }) =>
             `flex flex-col items-center justify-center flex-1 h-full min-h-[44px] gap-1 transition-colors select-none ${
               isActive
-                ? 'text-primary font-semibold'
+                ? 'bg-accent text-on-accent font-semibold rounded-lg mx-1 my-1'
                 : 'text-on-surface-variant hover:text-on-surface'
             }`
           }
@@ -74,7 +74,7 @@ export const BottomNav: React.FC = () => {
           className={({ isActive }) =>
             `flex flex-col items-center justify-center flex-1 h-full min-h-[44px] gap-1 transition-colors select-none ${
               isActive
-                ? 'text-primary font-semibold'
+                ? 'bg-accent text-on-accent font-semibold rounded-lg mx-1 my-1'
                 : 'text-on-surface-variant hover:text-on-surface'
             }`
           }

@@ -1,6 +1,7 @@
 import { supabase, isSupabaseConfigured, getLocalDb, saveLocalDb } from '../lib/supabase';
 import { EventItem } from '../types';
 import { logAuditAction } from './auditService';
+import { getStorageObjectPath, STORAGE_BUCKETS, deleteImage, deleteReplacedImage } from './storageService';
 
 const eventStartTimestamp = (value: string): string => {
   const parsed = new Date(value);
@@ -25,7 +26,9 @@ const getClubNames = async (clubIds: Array<string | null | undefined>) => {
   return new Map((data || []).map((club) => [club.id, club.name]));
 };
 
-const toEventItem = (row: any, clubName?: string, registrations: any[] = []): EventItem => ({
+const toEventItem = (row: any, clubName?: string, registrations: any[] = []): EventItem => {
+  const posterPath = getStorageObjectPath(STORAGE_BUCKETS.eventPosters, row.poster_path);
+  return {
   id: row.id,
   clubId: row.club_id || undefined,
   clubName,
@@ -34,13 +37,17 @@ const toEventItem = (row: any, clubName?: string, registrations: any[] = []): Ev
   eventDate: formatEventStart(row.starts_at),
   location: row.venue || '',
   eventLink: row.event_link || undefined,
-  posterUrl: row.poster_path || undefined,
+  // Keep only the object reference in fetched records. StorageImage signs it
+  // lazily when the image is actually displayed.
+  posterUrl: posterPath,
+  posterPath,
   capacity: row.capacity ?? 100,
   registeredCount: row.registered_count ?? registrations.filter((r) => r.status === 'REGISTERED').length,
   isPublished: Boolean(row.published),
   isPlatformEvent: Boolean(row.is_platform_event ?? !row.club_id),
   badgeLabel: row.badge_label || (row.club_id ? 'Club Event' : 'Open RSVP'),
-});
+  };
+};
 
 export const getPublicEvents = async (userId?: string): Promise<EventItem[]> => {
   if (isSupabaseConfigured) {
@@ -67,12 +74,12 @@ export const getPublicEvents = async (userId?: string): Promise<EventItem[]> => 
     if ('error' in registrationData && registrationData.error) throw registrationData.error;
     const registeredEventIds = new Set((registrationData.data || []).map((row: any) => row.event_id));
 
-    return rows.map((row) => {
+    return Promise.all(rows.map(async (row) => {
       return {
-        ...toEventItem(row, row.club_id ? clubNames.get(row.club_id) : undefined),
+        ...await toEventItem(row, row.club_id ? clubNames.get(row.club_id) : undefined),
         isUserRegistered: registeredEventIds.has(row.id),
       };
-    });
+    }));
   }
 
   const db = getLocalDb();
@@ -105,7 +112,7 @@ export const getAllEvents = async (): Promise<EventItem[]> => {
 
     const rows = data || [];
     const clubNames = await getClubNames(rows.map((row) => row.club_id));
-    return rows.map((row) => toEventItem(row, row.club_id ? clubNames.get(row.club_id) : undefined));
+    return Promise.all(rows.map((row) => toEventItem(row, row.club_id ? clubNames.get(row.club_id) : undefined)));
   }
 
   const db = getLocalDb();
@@ -143,10 +150,10 @@ export const getUserRegisteredEvents = async (userId: string): Promise<EventItem
       .in('id', eventIds);
     if (eventsError) throw eventsError;
     const clubNames = await getClubNames(rows.map((evt: any) => evt.club_id));
-    return (rows || []).map((evt: any) => ({
-      ...toEventItem(evt, evt.club_id ? clubNames.get(evt.club_id) : undefined),
+    return Promise.all((rows || []).map(async (evt: any) => ({
+      ...await toEventItem(evt, evt.club_id ? clubNames.get(evt.club_id) : undefined),
       isUserRegistered: true,
-    }));
+    })));
   }
 
   const db = getLocalDb();
@@ -197,7 +204,10 @@ export const createEvent = async (
       .select('*')
       .single();
 
-    if (error) throw error;
+    if (error) {
+      await deleteImage(STORAGE_BUCKETS.eventPosters, eventData.posterUrl).catch((cleanupError) => console.warn('Could not clean up unreferenced event poster:', cleanupError));
+      throw error;
+    }
 
     if (actor) {
       await logAuditAction({
@@ -254,6 +264,12 @@ export const updateEvent = async (
   actor?: { email: string; role: string }
 ): Promise<void> => {
   if (isSupabaseConfigured) {
+    let previousPosterPath: string | null = null;
+    if (updates.posterUrl !== undefined) {
+      const { data: existing, error: fetchError } = await supabase.from('events').select('poster_path').eq('id', eventId).maybeSingle();
+      if (fetchError) throw fetchError;
+      previousPosterPath = existing?.poster_path || null;
+    }
     const payload: any = {};
     if (updates.title !== undefined) payload.title = updates.title;
     if (updates.description !== undefined) payload.description = updates.description;
@@ -265,15 +281,16 @@ export const updateEvent = async (
     if (updates.isPublished !== undefined) payload.published = updates.isPublished;
     if (updates.badgeLabel !== undefined) payload.badge_label = updates.badgeLabel;
 
-    const { error } = await supabase.from('events').update(payload).eq('id', eventId);
+    const { data: updated, error } = await supabase.from('events').update(payload).eq('id', eventId).select('id').maybeSingle();
     if (error) throw error;
+    if (!updated) throw new Error('Event update affected no rows; its existing image was kept.');
+    if (updates.posterUrl !== undefined) await deleteReplacedImage(STORAGE_BUCKETS.eventPosters, previousPosterPath, updates.posterUrl);
   } else {
     const db = getLocalDb();
     const idx = db.events.findIndex((e) => e.id === eventId);
-    if (idx !== -1) {
-      db.events[idx] = { ...db.events[idx], ...updates };
-      saveLocalDb(db);
-    }
+    if (idx === -1) throw new Error('Event was not found. Refresh the list and try again.');
+    db.events[idx] = { ...db.events[idx], ...updates };
+    saveLocalDb(db);
   }
 
   if (actor) {
@@ -292,10 +309,15 @@ export const deleteEvent = async (
   actor?: { email: string; role: string }
 ): Promise<void> => {
   if (isSupabaseConfigured) {
-    const { error } = await supabase.from('events').delete().eq('id', eventId);
+    const { data: existing, error: fetchError } = await supabase.from('events').select('poster_path').eq('id', eventId).maybeSingle();
+    if (fetchError) throw fetchError;
+    const { data: deleted, error } = await supabase.from('events').delete().eq('id', eventId).select('id').maybeSingle();
     if (error) throw error;
+    if (!deleted) throw new Error('Event deletion affected no rows; its poster was kept.');
+    if (existing?.poster_path) await deleteReplacedImage(STORAGE_BUCKETS.eventPosters, existing.poster_path, null);
   } else {
     const db = getLocalDb();
+    if (!db.events.some((event) => event.id === eventId)) throw new Error('Event was not found. Refresh the list and try again.');
     db.events = db.events.filter((e) => e.id !== eventId);
     db.event_registrations = db.event_registrations.filter((r) => r.eventId !== eventId);
     saveLocalDb(db);
@@ -360,15 +382,20 @@ export const cancelEventRegistration = async (
   actor?: { email: string; role: string }
 ): Promise<void> => {
   if (isSupabaseConfigured) {
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('event_registrations')
       .delete()
       .eq('event_id', eventId)
-      .eq('user_id', userId);
+      .eq('user_id', userId)
+      .select('id');
 
     if (error) throw error;
+    if (!data?.length) throw new Error('No event registration was cancelled. Refresh the registration status and try again.');
   } else {
     const db = getLocalDb();
+    if (!(db.event_registrations || []).some((r) => r.eventId === eventId && r.userId === userId)) {
+      throw new Error('No event registration was cancelled. Refresh the registration status and try again.');
+    }
     db.event_registrations = db.event_registrations.filter(
       (r) => !(r.eventId === eventId && r.userId === userId)
     );

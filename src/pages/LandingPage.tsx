@@ -2,7 +2,12 @@ import React from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { Header } from '../components/Header';
 import { BottomNav } from '../components/BottomNav';
+import { StorageImage } from '../components/StorageImage';
 import { useAuth } from '../context/AuthContext';
+import { getPublicClubs } from '../services/clubService';
+import { getPublicEvents } from '../services/eventService';
+import { STORAGE_BUCKETS } from '../services/storageService';
+import { Club, EventItem } from '../types';
 
 const featureCards = [
   {
@@ -33,7 +38,7 @@ const featureCards = [
   {
     title: 'Audit & Accountability',
     description: 'Super administrators oversee memberships, charters, roles, and platform activity.',
-    icon: 'history_toggle_drop_down',
+    icon: 'history',
   },
 ];
 
@@ -58,6 +63,41 @@ const steps = [
 export const LandingPage: React.FC = () => {
   const { user, isAuthenticated } = useAuth();
   const navigate = useNavigate();
+  const [clubs, setClubs] = React.useState<Club[]>([]);
+  const [events, setEvents] = React.useState<EventItem[]>([]);
+  const [clubsLoading, setClubsLoading] = React.useState(true);
+  const [eventsLoading, setEventsLoading] = React.useState(true);
+  const [clubsError, setClubsError] = React.useState('');
+  const [eventsError, setEventsError] = React.useState('');
+
+  const loadClubs = React.useCallback(async () => {
+    setClubsLoading(true);
+    setClubsError('');
+    try {
+      setClubs(await getPublicClubs(user?.id));
+    } catch (error) {
+      setClubsError(error instanceof Error ? error.message : 'Clubs could not be loaded.');
+    } finally {
+      setClubsLoading(false);
+    }
+  }, [user?.id]);
+
+  const loadEvents = React.useCallback(async () => {
+    setEventsLoading(true);
+    setEventsError('');
+    try {
+      setEvents(await getPublicEvents(user?.id));
+    } catch (error) {
+      setEventsError(error instanceof Error ? error.message : 'Events could not be loaded.');
+    } finally {
+      setEventsLoading(false);
+    }
+  }, [user?.id]);
+
+  React.useEffect(() => {
+    void loadClubs();
+    void loadEvents();
+  }, [loadClubs, loadEvents]);
 
   const handlePrimaryAction = () => {
     if (isAuthenticated) {
@@ -69,7 +109,7 @@ export const LandingPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-surface font-body-md text-on-surface flex flex-col antialiased">
+    <div className="min-h-screen bg-app font-body-md text-on-surface flex flex-col antialiased">
       <Header subtitle="Campus Life Hub" />
 
       {/* Main Content */}
@@ -78,8 +118,8 @@ export const LandingPage: React.FC = () => {
         <section className="flex flex-col lg:flex-row items-center gap-8 lg:gap-12 py-2 sm:py-6">
           <div className="flex-1 flex flex-col gap-4 text-left">
             <div className="inline-flex items-center gap-2 self-start px-3 py-1 rounded-full bg-surface-container border border-border-default text-[11px] font-semibold text-primary uppercase tracking-wider">
-              <span className="w-1.5 h-1.5 rounded-full bg-primary"></span>
-              <span>Academic Session 2026</span>
+              <span className="w-1.5 h-1.5 rounded-full bg-accent"></span>
+              <span>Campus clubs and events</span>
             </div>
             <h1 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold text-on-surface tracking-tight leading-tight">
               Every campus club, one place.
@@ -92,7 +132,7 @@ export const LandingPage: React.FC = () => {
               <button
                 type="button"
                 onClick={handlePrimaryAction}
-                className="h-11 px-5 rounded-xl bg-primary text-on-primary text-xs sm:text-sm font-semibold shadow-sm hover:opacity-90 active:scale-95 transition-all"
+                className="h-11 px-5 rounded-xl bg-accent text-on-accent text-xs sm:text-sm font-semibold shadow-sm hover:opacity-90 active:scale-95 transition-all"
               >
                 {isAuthenticated ? 'Go to Workspace' : 'Join as Student'}
               </button>
@@ -112,6 +152,73 @@ export const LandingPage: React.FC = () => {
               className="w-full h-full object-cover"
             />
           </div>
+        </section>
+
+        <section aria-labelledby="public-events-heading" className="flex flex-col gap-4">
+          <div className="flex items-end justify-between gap-3">
+            <div>
+              <span className="font-label-caps text-label-caps text-primary uppercase font-bold text-[11px]">What's happening</span>
+              <h2 id="public-events-heading" className="text-lg sm:text-xl md:text-2xl font-bold text-on-surface mt-1">Published events</h2>
+            </div>
+            <Link to="/events" className="text-sm font-semibold text-primary underline underline-offset-4">All events</Link>
+          </div>
+          {eventsLoading ? (
+            <p role="status" className="rounded-xl border border-border-default bg-surface p-4 text-sm text-on-surface-variant">Loading published events…</p>
+          ) : eventsError ? (
+            <div role="alert" className="flex flex-col items-start gap-2 rounded-xl border border-border-default bg-surface p-4 text-sm text-on-surface-variant">
+              <span>{eventsError}</span>
+              <button type="button" onClick={() => void loadEvents()} className="min-h-10 rounded-lg bg-accent px-4 font-semibold text-on-accent">Retry events</button>
+            </div>
+          ) : events.length === 0 ? (
+            <p className="rounded-xl border border-border-default bg-surface p-4 text-sm text-on-surface-variant">There are no published events to show right now. Check back later or browse the event directory.</p>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              {events.slice(0, 3).map((event) => (
+                <article key={event.id} className="overflow-hidden rounded-xl border border-border-default bg-surface shadow-sm">
+                  {event.posterPath && <StorageImage bucket={STORAGE_BUCKETS.eventPosters} path={event.posterPath} alt={`${event.title} poster`} className="h-36 w-full object-cover" />}
+                  <div className="flex flex-col gap-2 p-4">
+                    <span className="text-xs font-semibold text-on-surface-variant">{event.eventDate || 'Date to be announced'}</span>
+                    <h3 className="font-bold text-on-surface">{event.title}</h3>
+                    <p className="text-sm text-on-surface-variant">{event.clubName || 'Campus event'} · {event.location || 'Location to be announced'}</p>
+                    <Link to="/events" className="mt-1 inline-flex min-h-10 items-center self-start rounded-lg bg-accent px-4 text-sm font-semibold text-on-accent">View event</Link>
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
+        </section>
+
+        <section aria-labelledby="public-clubs-heading" className="flex flex-col gap-4">
+          <div className="flex items-end justify-between gap-3">
+            <div>
+              <span className="font-label-caps text-label-caps text-primary uppercase font-bold text-[11px]">Find your community</span>
+              <h2 id="public-clubs-heading" className="text-lg sm:text-xl md:text-2xl font-bold text-on-surface mt-1">Explore approved clubs</h2>
+            </div>
+            <Link to="/clubs" className="text-sm font-semibold text-primary underline underline-offset-4">Club directory</Link>
+          </div>
+          {clubsLoading ? (
+            <p role="status" className="rounded-xl border border-border-default bg-surface p-4 text-sm text-on-surface-variant">Loading approved clubs…</p>
+          ) : clubsError ? (
+            <div role="alert" className="flex flex-col items-start gap-2 rounded-xl border border-border-default bg-surface p-4 text-sm text-on-surface-variant">
+              <span>{clubsError}</span>
+              <button type="button" onClick={() => void loadClubs()} className="min-h-10 rounded-lg bg-accent px-4 font-semibold text-on-accent">Retry clubs</button>
+            </div>
+          ) : clubs.length === 0 ? (
+            <p className="rounded-xl border border-border-default bg-surface p-4 text-sm text-on-surface-variant">No approved clubs are listed right now. Visit the directory again later.</p>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              {clubs.slice(0, 3).map((club) => (
+                <article key={club.id} className="flex items-center gap-4 rounded-xl border border-border-default bg-surface p-4 shadow-sm">
+                  {club.logoPath ? <StorageImage bucket={STORAGE_BUCKETS.clubLogos} path={club.logoPath} alt={`${club.name} logo`} className="h-14 w-14 shrink-0 rounded-lg object-cover" /> : <span aria-hidden="true" className="material-symbols-outlined flex h-14 w-14 shrink-0 items-center justify-center rounded-lg bg-hover text-primary">groups</span>}
+                  <div className="min-w-0">
+                    <h3 className="truncate font-bold text-on-surface">{club.name}</h3>
+                    <p className="text-sm text-on-surface-variant">{club.category}</p>
+                    <Link to="/clubs" className="mt-2 inline-block text-sm font-semibold text-primary underline underline-offset-4">Explore club</Link>
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
         </section>
 
         {/* Feature Cards Grid */}

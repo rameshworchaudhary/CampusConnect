@@ -1,6 +1,10 @@
 import { supabase, isSupabaseConfigured, getLocalDb, saveLocalDb } from '../lib/supabase';
 import { Club } from '../types';
 import { logAuditAction } from './auditService';
+import { getStorageObjectPath, STORAGE_BUCKETS, deleteImage, deleteReplacedImage } from './storageService';
+
+const isMissingAnnouncementImageColumn = (error: any): boolean =>
+  (error?.code === '42703' || error?.code === 'PGRST204') && /image_path/i.test(error?.message || '');
 
 const getAssignedAdminNames = async (profileIds: Array<string | null | undefined>) => {
   const ids = [...new Set(profileIds.filter((id): id is string => Boolean(id)))];
@@ -29,6 +33,7 @@ const getClubMembershipRows = async (clubIds: string[]) => {
 };
 
 const mapClubRow = (row: any, memberships: any[], adminNames: Map<string, string>, userId?: string): Club => {
+  const logoPath = getStorageObjectPath(STORAGE_BUCKETS.clubLogos, row.logo_path);
   const clubMemberships = memberships.filter((membership) => membership.club_id === row.id);
   const ownMembership = clubMemberships.find((membership) => membership.student_id === userId);
   const status = toApprovalStatus(row.status);
@@ -38,7 +43,14 @@ const mapClubRow = (row: any, memberships: any[], adminNames: Map<string, string
     name: row.name,
     category: row.category || 'General',
     description: row.description || '',
-    logoUrl: row.logo_path || undefined,
+    meetingSchedule: row.meeting_schedule || undefined,
+    meetingLocation: row.meeting_location || undefined,
+    facultyAdvisor: row.faculty_advisor || undefined,
+    contactEmail: row.contact_email || undefined,
+    contactPhone: row.contact_phone || undefined,
+    // Sign only when the logo is displayed by StorageImage.
+    logoUrl: logoPath,
+    logoPath,
     approvalStatus: status,
     isPublished: status === 'APPROVED',
     assignedAdminId: row.assigned_admin_id || undefined,
@@ -66,7 +78,7 @@ export const getPublicClubs = async (userId?: string): Promise<Club[]> => {
       getClubMembershipRows(rows.map((club) => club.id)),
       getAssignedAdminNames(rows.map((club) => club.assigned_admin_id)),
     ]);
-    return rows.map((row) => mapClubRow(row, memberships, adminNames, userId));
+    return Promise.all(rows.map((row) => mapClubRow(row, memberships, adminNames, userId)));
   }
 
   // Fallback mode using local state
@@ -110,7 +122,7 @@ export const getAllClubs = async (): Promise<Club[]> => {
       getClubMembershipRows(rows.map((club) => club.id)),
       getAssignedAdminNames(rows.map((club) => club.assigned_admin_id)),
     ]);
-    return rows.map((row) => mapClubRow(row, memberships, adminNames));
+    return Promise.all(rows.map((row) => mapClubRow(row, memberships, adminNames)));
   }
 
   const db = getLocalDb();
@@ -177,6 +189,11 @@ export const registerClub = async (
           name: clubData.name,
           category: clubData.category,
           description: clubData.description,
+          meeting_schedule: clubData.meetingSchedule || null,
+          meeting_location: clubData.meetingLocation || null,
+          faculty_advisor: clubData.facultyAdvisor || null,
+          contact_email: clubData.contactEmail || null,
+          contact_phone: clubData.contactPhone || null,
           logo_path: clubData.logoUrl,
           created_by: authData.user?.id,
         },
@@ -184,7 +201,10 @@ export const registerClub = async (
       .select()
       .single();
 
-    if (error) throw error;
+    if (error) {
+      await deleteImage(STORAGE_BUCKETS.clubLogos, clubData.logoUrl).catch((cleanupError) => console.warn('Could not clean up unreferenced club logo:', cleanupError));
+      throw error;
+    }
 
     if (actor) {
       await logAuditAction({
@@ -207,7 +227,8 @@ export const registerClub = async (
       facultyAdvisor: data.faculty_advisor,
       contactEmail: data.contact_email,
       contactPhone: data.contact_phone,
-      logoUrl: data.logo_path,
+      logoUrl: getStorageObjectPath(STORAGE_BUCKETS.clubLogos, data.logo_path),
+      logoPath: getStorageObjectPath(STORAGE_BUCKETS.clubLogos, data.logo_path),
       approvalStatus: toApprovalStatus(data.status),
       isPublished: String(data.status).toLowerCase() === 'approved',
       memberCount: 0,
@@ -252,27 +273,39 @@ export const registerClub = async (
 
 export const updateClub = async (
   clubId: string,
-  updates: Partial<Club>,
+  updates: Omit<Partial<Club>, 'logoUrl'> & { logoUrl?: string | null },
   actor?: { email: string; role: string }
 ): Promise<void> => {
   if (isSupabaseConfigured) {
+    let previousLogoPath: string | null = null;
+    if (updates.logoUrl !== undefined) {
+      const { data: existing, error: fetchError } = await supabase.from('clubs').select('logo_path').eq('id', clubId).maybeSingle();
+      if (fetchError) throw fetchError;
+      previousLogoPath = existing?.logo_path || null;
+    }
     const payload: any = {};
     if (updates.name !== undefined) payload.name = updates.name;
     if (updates.category !== undefined) payload.category = updates.category;
     if (updates.description !== undefined) payload.description = updates.description;
+    if (updates.meetingSchedule !== undefined) payload.meeting_schedule = updates.meetingSchedule || null;
+    if (updates.meetingLocation !== undefined) payload.meeting_location = updates.meetingLocation || null;
+    if (updates.facultyAdvisor !== undefined) payload.faculty_advisor = updates.facultyAdvisor || null;
+    if (updates.contactEmail !== undefined) payload.contact_email = updates.contactEmail || null;
+    if (updates.contactPhone !== undefined) payload.contact_phone = updates.contactPhone || null;
     if (updates.logoUrl !== undefined) payload.logo_path = updates.logoUrl;
     if (updates.approvalStatus !== undefined) payload.status = updates.approvalStatus.toLowerCase();
     if (updates.assignedAdminId !== undefined) payload.assigned_admin_id = updates.assignedAdminId;
 
-    const { error } = await supabase.from('clubs').update(payload).eq('id', clubId);
+    const { data: updated, error } = await supabase.from('clubs').update(payload).eq('id', clubId).select('id').maybeSingle();
     if (error) throw error;
+    if (!updated) throw new Error('Club update affected no rows; its existing image was kept.');
+    if (updates.logoUrl !== undefined) await deleteReplacedImage(STORAGE_BUCKETS.clubLogos, previousLogoPath, updates.logoUrl);
   } else {
     const db = getLocalDb();
     const idx = db.clubs.findIndex((c) => c.id === clubId);
-    if (idx !== -1) {
-      db.clubs[idx] = { ...db.clubs[idx], ...updates };
-      saveLocalDb(db);
-    }
+    if (idx === -1) throw new Error('Club was not found. Refresh the list and try again.');
+    db.clubs[idx] = { ...db.clubs[idx], ...updates };
+    saveLocalDb(db);
   }
 
   if (actor) {
@@ -323,10 +356,25 @@ export const deleteClub = async (
   actor?: { email: string; role: string }
 ): Promise<void> => {
   if (isSupabaseConfigured) {
-    const { error } = await supabase.from('clubs').delete().eq('id', clubId);
+    const [clubResult, eventsResult, announcementsResult] = await Promise.all([
+      supabase.from('clubs').select('logo_path').eq('id', clubId).maybeSingle(),
+      supabase.from('events').select('poster_path').eq('club_id', clubId),
+      supabase.from('announcements').select('image_path').eq('club_id', clubId),
+    ]);
+    if (clubResult.error) throw clubResult.error;
+    if (eventsResult.error) throw eventsResult.error;
+    if (announcementsResult.error && !isMissingAnnouncementImageColumn(announcementsResult.error)) throw announcementsResult.error;
+    const { data: deleted, error } = await supabase.from('clubs').delete().eq('id', clubId).select('id').maybeSingle();
     if (error) throw error;
+    if (!deleted) throw new Error('Club deletion affected no rows; its images were kept.');
+    await Promise.all([
+      deleteImage(STORAGE_BUCKETS.clubLogos, clubResult.data?.logo_path),
+      ...(eventsResult.data || []).map((event) => deleteImage(STORAGE_BUCKETS.eventPosters, event.poster_path)),
+      ...(announcementsResult.error ? [] : (announcementsResult.data || []).map((announcement) => deleteImage(STORAGE_BUCKETS.announcementImages, announcement.image_path))),
+    ]).catch((cleanupError) => console.warn('Club was deleted, but one or more private images could not be removed:', cleanupError));
   } else {
     const db = getLocalDb();
+    if (!db.clubs.some((club) => club.id === clubId)) throw new Error('Club was not found. Refresh the list and try again.');
     db.clubs = db.clubs.filter((c) => c.id !== clubId);
     db.club_memberships = db.club_memberships.filter((m) => m.clubId !== clubId);
     db.events = db.events.filter((e) => e.clubId !== clubId);
@@ -348,43 +396,49 @@ export const deleteClub = async (
 export const assignClubAdmin = async (
   clubId: string,
   userId: string,
-  actor?: { email: string; role: string }
+  actor: { email: string; role: string }
 ): Promise<void> => {
-  if (isSupabaseConfigured) {
-    // 1. Update club
-    const { error: clubErr } = await supabase
-      .from('clubs')
-      .update({ assigned_admin_id: userId })
-      .eq('id', clubId);
-    if (clubErr) throw clubErr;
+  if (actor.role !== 'SUPER_ADMIN') {
+    throw new Error('Only a Super Admin can assign a Club Admin.');
+  }
 
-    // 2. Update user profile
-    const { error: profErr } = await supabase
-      .from('profiles')
-      .update({ role: 'club_admin' })
-      .eq('id', userId);
-    if (profErr) throw profErr;
+  if (isSupabaseConfigured) {
+    const { error } = await supabase.rpc('set_profile_role_and_club', {
+      p_target_user_id: userId,
+      p_target_role: 'CLUB_ADMIN',
+      p_target_club_id: clubId,
+    });
+    if (error) throw error;
   } else {
     const db = getLocalDb();
     const clubIdx = db.clubs.findIndex((c) => c.id === clubId);
     const userIdx = db.profiles.findIndex((p) => p.id === userId);
-    if (clubIdx !== -1) {
-      db.clubs[clubIdx].assignedAdminId = userId;
-      if (userIdx !== -1) {
-        db.clubs[clubIdx].assignedAdminName = db.profiles[userIdx].fullName;
+    if (clubIdx === -1 || userIdx === -1) throw new Error('The selected club or user no longer exists. Refresh and try again.');
+      const previousAdminId = db.clubs[clubIdx].assignedAdminId;
+      if (previousAdminId && previousAdminId !== userId) {
+        const previousAdmin = db.profiles.find((profile) => profile.id === previousAdminId);
+        if (previousAdmin?.assignedClubId === clubId) {
+          previousAdmin.role = 'STUDENT';
+          previousAdmin.assignedClubId = undefined;
+          previousAdmin.assignedClubName = undefined;
+        }
       }
-    }
-    if (userIdx !== -1) {
-      db.profiles[userIdx].role = 'CLUB_ADMIN';
-      db.profiles[userIdx].assignedClubId = clubId;
-      if (clubIdx !== -1) {
-        db.profiles[userIdx].assignedClubName = db.clubs[clubIdx].name;
+      if (db.profiles[userIdx].assignedClubId && db.profiles[userIdx].assignedClubId !== clubId) {
+        const previousClub = db.clubs.find((club) => club.id === db.profiles[userIdx].assignedClubId);
+        if (previousClub?.assignedAdminId === userId) {
+          previousClub.assignedAdminId = undefined;
+          previousClub.assignedAdminName = undefined;
+        }
       }
-    }
+    db.clubs[clubIdx].assignedAdminId = userId;
+    db.clubs[clubIdx].assignedAdminName = db.profiles[userIdx].fullName;
+    db.profiles[userIdx].role = 'CLUB_ADMIN';
+    db.profiles[userIdx].assignedClubId = clubId;
+    db.profiles[userIdx].assignedClubName = db.clubs[clubIdx].name;
     saveLocalDb(db);
   }
 
-  if (actor) {
+  if (!isSupabaseConfigured) {
     await logAuditAction({
       actionType: 'ADMIN_ASSIGNMENT',
       actorEmail: actor.email,

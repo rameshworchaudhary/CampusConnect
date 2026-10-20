@@ -9,17 +9,20 @@ import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { getPlatformStats } from '../services/statsService';
 import { getAllClubs, registerClub, approveClub, rejectClub, deleteClub, assignClubAdmin } from '../services/clubService';
-import { getAllUsers, updateUserRole, toggleUserStatus, deleteUser } from '../services/userService';
+import { getAllUsers, updateUserRole, toggleUserStatus } from '../services/userService';
 import { getAllEvents, createEvent, deleteEvent, updateEvent } from '../services/eventService';
 import { getAllAnnouncements, createAnnouncement, deleteAnnouncement, toggleAnnouncementStatus } from '../services/announcementService';
+import { STORAGE_BUCKETS } from '../services/storageService';
 import { getAuditLogs } from '../services/auditService';
+import { StorageImage } from '../components/StorageImage';
 
 export const SuperAdminDashboard: React.FC = () => {
-  const { user, isAuthenticated } = useAuth();
+  const { user, isAuthenticated, loading: authLoading } = useAuth();
   const navigate = useNavigate();
 
   const [stats, setStats] = useState<PlatformStats | null>(null);
   const [statsLoading, setStatsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const [clubs, setClubs] = useState<Club[]>([]);
   const [users, setUsers] = useState<User[]>([]);
@@ -75,8 +78,10 @@ export const SuperAdminDashboard: React.FC = () => {
   // Announcement form
   const [newAnnouncementTitle, setNewAnnouncementTitle] = useState('');
   const [newAnnouncementContent, setNewAnnouncementContent] = useState('');
+  const [newAnnouncementImagePath, setNewAnnouncementImagePath] = useState('');
 
   useEffect(() => {
+    if (authLoading) return;
     if (!isAuthenticated) {
       navigate('/login');
       return;
@@ -86,11 +91,12 @@ export const SuperAdminDashboard: React.FC = () => {
       return;
     }
     fetchPlatformData();
-  }, [isAuthenticated, user?.role]);
+  }, [authLoading, isAuthenticated, user?.role]);
 
   const fetchPlatformData = async () => {
     try {
       setStatsLoading(true);
+      setLoadError(null);
       const [statsData, clubsData, usersData, evtsData, annsData, logsData] = await Promise.all([
         getPlatformStats(),
         getAllClubs(),
@@ -115,6 +121,7 @@ export const SuperAdminDashboard: React.FC = () => {
       }
     } catch (err: any) {
       console.warn('Error loading admin platform data:', err);
+      setLoadError(err?.message || 'Could not load platform data. Check your connection and try again.');
     } finally {
       setStatsLoading(false);
     }
@@ -156,29 +163,6 @@ export const SuperAdminDashboard: React.FC = () => {
           await fetchPlatformData();
         } catch (err: any) {
           setToastMessage(err.message || 'Failed to delete club.');
-        }
-      },
-    });
-  };
-
-  const handleDeleteUser = (targetUser: User) => {
-    if (!user) return;
-    if (targetUser.id === user.id) {
-      setToastMessage('You cannot delete your own account.');
-      return;
-    }
-    setConfirmDialog({
-      title: 'Confirm User Deletion',
-      message: `Are you sure you want to remove ${targetUser.fullName}'s account from the platform?`,
-      actionLabel: 'Delete User',
-      onConfirm: async () => {
-        try {
-          await deleteUser(targetUser.id, { email: user.email, role: user.role });
-          setToastMessage(`User ${targetUser.fullName} deleted.`);
-          setConfirmDialog(null);
-          await fetchPlatformData();
-        } catch (err: any) {
-          setToastMessage(err.message || 'Failed to delete user.');
         }
       },
     });
@@ -251,6 +235,14 @@ export const SuperAdminDashboard: React.FC = () => {
   const handleCreateEventSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
+    if (newEventPosterUrl && !/^(data:|blob:)/i.test(newEventPosterUrl)) {
+      const expectedFolder = newEventClubId || user.id;
+      const uploadedFolder = newEventPosterUrl.split('/')[0];
+      if (uploadedFolder !== expectedFolder) {
+        setToastMessage('The event host changed after this poster was uploaded. Remove it and upload it again for the selected host.');
+        return;
+      }
+    }
     try {
       await createEvent(
         {
@@ -324,6 +316,7 @@ export const SuperAdminDashboard: React.FC = () => {
           title: newAnnouncementTitle.trim(),
           content: newAnnouncementContent.trim(),
           postedByName: 'Campus Administration',
+          imagePath: newAnnouncementImagePath || null,
         },
         { id: user.id, email: user.email, role: user.role }
       );
@@ -332,6 +325,7 @@ export const SuperAdminDashboard: React.FC = () => {
       setShowAnnouncementModal(false);
       setNewAnnouncementTitle('');
       setNewAnnouncementContent('');
+      setNewAnnouncementImagePath('');
       await fetchPlatformData();
     } catch (err: any) {
       setToastMessage(err.message || 'Failed to publish bulletin.');
@@ -391,11 +385,17 @@ export const SuperAdminDashboard: React.FC = () => {
   const pendingClubs = clubs.filter((c) => c.approvalStatus === 'PENDING');
 
   return (
-    <div className="bg-surface font-body-md text-on-surface antialiased flex flex-col min-h-screen">
+    <div className="bg-app font-body-md text-on-surface antialiased flex flex-col min-h-screen">
       <Header subtitle="Super Admin Portal" />
 
-      <main className="flex-1 w-full pt-20 pb-24 md:pb-12 bg-surface px-4 sm:px-6 lg:px-8">
+      <main className="flex-1 w-full pt-20 pb-24 md:pb-12 bg-app px-4 sm:px-6 lg:px-8">
         <div className="mx-auto w-full max-w-7xl flex flex-col gap-6">
+          {loadError && !statsLoading && (
+            <div role="alert" className="bg-surface-container-lowest p-4 rounded-xl border border-border-default flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <p className="text-xs text-on-surface-variant">Platform data could not be loaded: {loadError}</p>
+              <button type="button" onClick={fetchPlatformData} className="h-9 px-4 rounded-lg bg-accent text-on-accent text-xs font-semibold shrink-0">Retry</button>
+            </div>
+          )}
           {/* Header Banner */}
           <div className="bg-surface-container-lowest p-5 sm:p-6 rounded-2xl border border-border-default shadow-sm flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div className="flex flex-col gap-1">
@@ -404,7 +404,7 @@ export const SuperAdminDashboard: React.FC = () => {
                   System Directory
                 </span>
                 <span className="inline-flex items-center gap-1 text-xs bg-surface-container text-primary font-semibold px-2 py-0.5 rounded-full border border-border-default">
-                  <span className="w-1.5 h-1.5 rounded-full bg-primary"></span>
+                  <span className="w-1.5 h-1.5 rounded-full bg-accent"></span>
                   Super Administrator
                 </span>
               </div>
@@ -421,7 +421,7 @@ export const SuperAdminDashboard: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setShowCreateClubModal(true)}
-                className="h-10 px-3.5 bg-primary text-on-primary text-xs sm:text-sm font-semibold rounded-xl flex items-center gap-1.5 hover:opacity-90 shadow-sm transition-opacity"
+                className="h-10 px-3.5 bg-accent text-on-accent text-xs sm:text-sm font-semibold rounded-xl flex items-center gap-1.5 hover:opacity-90 shadow-sm transition-opacity"
               >
                 <span className="material-symbols-outlined text-[18px]">add</span>
                 <span>Register Club</span>
@@ -535,7 +535,7 @@ export const SuperAdminDashboard: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setActiveTab('clubs')}
-                className="h-8 px-4 rounded-lg bg-primary text-on-primary text-xs font-semibold hover:opacity-90 shrink-0 self-start sm:self-auto"
+                className="h-8 px-4 rounded-lg bg-accent text-on-accent text-xs font-semibold hover:opacity-90 shrink-0 self-start sm:self-auto"
               >
                 Review Submissions
               </button>
@@ -559,7 +559,7 @@ export const SuperAdminDashboard: React.FC = () => {
                 onClick={() => setActiveTab(tab.id as any)}
                 className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs sm:text-sm font-medium whitespace-nowrap transition-colors border ${
                   activeTab === tab.id
-                    ? 'bg-primary text-on-primary border-primary font-semibold shadow-sm'
+                    ? 'bg-accent text-on-accent border-accent font-semibold shadow-sm'
                     : 'bg-transparent text-on-surface-variant border-transparent hover:text-on-surface hover:bg-surface-container'
                 }`}
               >
@@ -608,7 +608,7 @@ export const SuperAdminDashboard: React.FC = () => {
                           <div className="flex items-start gap-3 min-w-0">
                             {clubItem.logoUrl ? (
                               <div className="w-10 h-10 rounded-lg overflow-hidden border border-border-default shrink-0 bg-surface-container">
-                                <img src={clubItem.logoUrl} alt={clubItem.name} className="w-full h-full object-cover" />
+                                <StorageImage bucket={STORAGE_BUCKETS.clubLogos} path={clubItem.logoPath} alt={clubItem.name} className="w-full h-full object-cover" />
                               </div>
                             ) : (
                               <div className="w-10 h-10 rounded-lg bg-surface-container flex items-center justify-center text-primary font-bold shrink-0 border border-border-default text-xs">
@@ -644,7 +644,7 @@ export const SuperAdminDashboard: React.FC = () => {
                               <button
                                 type="button"
                                 onClick={() => handleApproveClub(clubItem.id)}
-                                className="h-8 px-3 rounded-lg bg-primary text-on-primary text-xs font-semibold hover:opacity-90 shadow-sm"
+                                className="h-8 px-3 rounded-lg bg-accent text-on-accent text-xs font-semibold hover:opacity-90 shadow-sm"
                               >
                                 Approve
                               </button>
@@ -756,7 +756,7 @@ export const SuperAdminDashboard: React.FC = () => {
                     <button
                       type="button"
                       onClick={() => setShowCreateClubModal(true)}
-                      className="w-full h-9 rounded-lg bg-primary text-on-primary text-xs font-semibold hover:opacity-90 transition-opacity flex items-center justify-center gap-1.5 shadow-sm"
+                      className="w-full h-9 rounded-lg bg-accent text-on-accent text-xs font-semibold hover:opacity-90 transition-opacity flex items-center justify-center gap-1.5 shadow-sm"
                     >
                       <span className="material-symbols-outlined text-[16px]">add</span>
                       <span>Register New Club</span>
@@ -846,7 +846,7 @@ export const SuperAdminDashboard: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setShowCreateClubModal(true)}
-                  className="h-9 px-4 rounded-xl bg-primary text-on-primary text-xs font-semibold hover:opacity-90 self-start sm:self-auto shadow-sm"
+                  className="h-9 px-4 rounded-xl bg-accent text-on-accent text-xs font-semibold hover:opacity-90 self-start sm:self-auto shadow-sm"
                 >
                   + Add New Club
                 </button>
@@ -875,7 +875,7 @@ export const SuperAdminDashboard: React.FC = () => {
                       onClick={() => setCategoryFilter(cat)}
                       className={`text-xs px-3 py-1.5 rounded-lg border transition-colors whitespace-nowrap ${
                         categoryFilter === cat
-                          ? 'bg-primary text-on-primary border-primary font-semibold'
+                          ? 'bg-accent text-on-accent border-accent font-semibold'
                           : 'bg-surface-container text-on-surface-variant border-border-default hover:text-on-surface'
                       }`}
                     >
@@ -902,7 +902,7 @@ export const SuperAdminDashboard: React.FC = () => {
                           <div className="flex items-center gap-2.5 min-w-0">
                             {clubItem.logoUrl ? (
                               <div className="w-10 h-10 rounded-lg overflow-hidden border border-border-default bg-surface-container shrink-0">
-                                <img src={clubItem.logoUrl} alt={clubItem.name} className="w-full h-full object-cover" />
+                                <StorageImage bucket={STORAGE_BUCKETS.clubLogos} path={clubItem.logoPath} alt={clubItem.name} className="w-full h-full object-cover" />
                               </div>
                             ) : (
                               <div className="w-10 h-10 rounded-lg bg-surface-container flex items-center justify-center text-primary font-bold shrink-0 border border-border-default text-xs">
@@ -949,7 +949,7 @@ export const SuperAdminDashboard: React.FC = () => {
                               <button
                                 type="button"
                                 onClick={() => handleApproveClub(clubItem.id)}
-                                className="h-8 px-3 rounded-lg bg-primary text-on-primary text-xs font-semibold hover:opacity-90 shadow-sm"
+                                className="h-8 px-3 rounded-lg bg-accent text-on-accent text-xs font-semibold hover:opacity-90 shadow-sm"
                               >
                                 Approve
                               </button>
@@ -1000,7 +1000,7 @@ export const SuperAdminDashboard: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setActiveTab('roles')}
-                  className="h-9 px-4 rounded-xl bg-primary text-on-primary text-xs font-semibold hover:opacity-90 self-start sm:self-auto shadow-sm"
+                  className="h-9 px-4 rounded-xl bg-accent text-on-accent text-xs font-semibold hover:opacity-90 self-start sm:self-auto shadow-sm"
                 >
                   Manage Roles
                 </button>
@@ -1055,7 +1055,7 @@ export const SuperAdminDashboard: React.FC = () => {
                               u.isActive ? 'text-primary' : 'text-on-surface-variant'
                             }`}
                           >
-                            <span className={`w-1.5 h-1.5 rounded-full ${u.isActive ? 'bg-primary' : 'bg-on-surface-variant'}`}></span>
+                            <span className={`w-1.5 h-1.5 rounded-full ${u.isActive ? 'bg-accent' : 'bg-on-surface-variant'}`}></span>
                             {u.isActive ? 'Active' : 'Suspended'}
                           </span>
                         </div>
@@ -1083,10 +1083,11 @@ export const SuperAdminDashboard: React.FC = () => {
                         </button>
                         <button
                           type="button"
-                          onClick={() => handleDeleteUser(u)}
-                          className="h-8 px-2.5 text-xs text-on-surface-variant hover:text-primary underline ml-auto"
+                          disabled
+                          title="Account deletion requires a protected server-side Auth Admin function."
+                          className="h-8 px-2.5 text-xs text-on-surface-variant underline ml-auto opacity-50 cursor-not-allowed"
                         >
-                          Delete
+                          Deletion unavailable
                         </button>
                       </div>
                     </div>
@@ -1140,7 +1141,7 @@ export const SuperAdminDashboard: React.FC = () => {
                                 u.isActive ? 'text-primary' : 'text-on-surface-variant'
                               }`}
                             >
-                              <span className={`w-1.5 h-1.5 rounded-full ${u.isActive ? 'bg-primary' : 'bg-on-surface-variant'}`}></span>
+                              <span className={`w-1.5 h-1.5 rounded-full ${u.isActive ? 'bg-accent' : 'bg-on-surface-variant'}`}></span>
                               {u.isActive ? 'Active' : 'Suspended'}
                             </span>
                           </td>
@@ -1167,10 +1168,11 @@ export const SuperAdminDashboard: React.FC = () => {
                               </button>
                               <button
                                 type="button"
-                                onClick={() => handleDeleteUser(u)}
-                                className="h-7 px-2 text-[11px] text-on-surface-variant hover:text-primary underline"
+                                disabled
+                                title="Account deletion requires a protected server-side Auth Admin function."
+                                className="h-7 px-2 text-[11px] text-on-surface-variant underline opacity-50 cursor-not-allowed"
                               >
-                                Delete
+                                Deletion unavailable
                               </button>
                             </div>
                           </td>
@@ -1194,7 +1196,7 @@ export const SuperAdminDashboard: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setShowCreateEventModal(true)}
-                  className="h-9 px-4 rounded-xl bg-primary text-on-primary text-xs font-semibold hover:opacity-90 self-start sm:self-auto shadow-sm"
+                  className="h-9 px-4 rounded-xl bg-accent text-on-accent text-xs font-semibold hover:opacity-90 self-start sm:self-auto shadow-sm"
                 >
                   + Create Event
                 </button>
@@ -1214,7 +1216,7 @@ export const SuperAdminDashboard: React.FC = () => {
                       <div className="flex flex-col gap-2">
                         {evt.posterUrl && (
                           <div className="w-full h-32 rounded-lg overflow-hidden border border-border-default bg-surface-container">
-                            <img src={evt.posterUrl} alt={evt.title} className="w-full h-full object-cover" />
+                            <StorageImage bucket={STORAGE_BUCKETS.eventPosters} path={evt.posterPath} alt={evt.title} className="w-full h-full object-cover" />
                           </div>
                         )}
                         <div className="flex items-start justify-between gap-2">
@@ -1271,7 +1273,7 @@ export const SuperAdminDashboard: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setShowAnnouncementModal(true)}
-                  className="h-9 px-4 rounded-xl bg-primary text-on-primary text-xs font-semibold hover:opacity-90 self-start sm:self-auto shadow-sm"
+                  className="h-9 px-4 rounded-xl bg-accent text-on-accent text-xs font-semibold hover:opacity-90 self-start sm:self-auto shadow-sm"
                 >
                   + Post Bulletin
                 </button>
@@ -1296,6 +1298,7 @@ export const SuperAdminDashboard: React.FC = () => {
                           </span>
                         </div>
                         <p className="text-xs text-on-surface-variant leading-relaxed">{ann.content}</p>
+                        {ann.imagePath && <StorageImage bucket={STORAGE_BUCKETS.announcementImages} path={ann.imagePath} alt="Announcement attachment" className="max-h-36 w-full rounded-lg object-cover" />}
                         <span className="text-[11px] text-on-surface-variant mt-1">
                           Posted by {ann.postedByName} {ann.clubName ? `(${ann.clubName})` : ''} on {new Date(ann.createdAt).toLocaleDateString()}
                         </span>
@@ -1401,7 +1404,7 @@ export const SuperAdminDashboard: React.FC = () => {
 
                 <button
                   type="submit"
-                  className="h-10 px-5 rounded-xl bg-primary text-on-primary text-xs font-semibold shadow-sm hover:opacity-90 self-start"
+                  className="h-10 px-5 rounded-xl bg-accent text-on-accent text-xs font-semibold shadow-sm hover:opacity-90 self-start"
                 >
                   Update User Privileges
                 </button>
@@ -1553,11 +1556,11 @@ export const SuperAdminDashboard: React.FC = () => {
 
           {/* Logo Uploader */}
           <ImageUploader
-            bucket="club-logos"
+            bucket={STORAGE_BUCKETS.clubLogos}
             folderId={user?.id}
             label="Club Logo"
             currentImageUrl={newClubLogoUrl}
-            onImageUploaded={(url) => setNewClubLogoUrl(url)}
+            onImageUploaded={(_url, path) => setNewClubLogoUrl(path)}
             onImageRemoved={() => setNewClubLogoUrl('')}
             helperText="JPG, PNG, WebP (max 5 MB)"
             aspectRatio="square"
@@ -1573,7 +1576,7 @@ export const SuperAdminDashboard: React.FC = () => {
             </button>
             <button
               type="submit"
-              className="h-9 px-5 rounded-lg bg-primary text-on-primary text-xs font-semibold shadow-sm hover:opacity-90"
+              className="h-9 px-5 rounded-lg bg-accent text-on-accent text-xs font-semibold shadow-sm hover:opacity-90"
             >
               Create Club
             </button>
@@ -1692,11 +1695,11 @@ export const SuperAdminDashboard: React.FC = () => {
 
           {/* Event Poster Upload */}
           <ImageUploader
-            bucket="event-posters"
-            folderId={user?.id}
+            bucket={STORAGE_BUCKETS.eventPosters}
+            folderId={newEventClubId || user?.id}
             label="Event Poster"
             currentImageUrl={newEventPosterUrl}
-            onImageUploaded={(url) => setNewEventPosterUrl(url)}
+            onImageUploaded={(_url, path) => setNewEventPosterUrl(path)}
             onImageRemoved={() => setNewEventPosterUrl('')}
             helperText="JPG, PNG, WebP (max 5 MB)"
             aspectRatio="banner"
@@ -1712,7 +1715,7 @@ export const SuperAdminDashboard: React.FC = () => {
             </button>
             <button
               type="submit"
-              className="h-9 px-5 rounded-lg bg-primary text-on-primary text-xs font-semibold shadow-sm hover:opacity-90"
+              className="h-9 px-5 rounded-lg bg-accent text-on-accent text-xs font-semibold shadow-sm hover:opacity-90"
             >
               Publish Event
             </button>
@@ -1755,6 +1758,16 @@ export const SuperAdminDashboard: React.FC = () => {
             />
           </div>
 
+          <ImageUploader
+            bucket={STORAGE_BUCKETS.announcementImages}
+            folderId={user?.id}
+            label="Announcement Image (Optional)"
+            currentImageUrl={newAnnouncementImagePath}
+            onImageUploaded={(_url, path) => setNewAnnouncementImagePath(path)}
+            onImageRemoved={() => setNewAnnouncementImagePath('')}
+            aspectRatio="banner"
+          />
+
           <div className="flex justify-end gap-2 pt-2 border-t border-border-default">
             <button
               type="button"
@@ -1765,7 +1778,7 @@ export const SuperAdminDashboard: React.FC = () => {
             </button>
             <button
               type="submit"
-              className="h-9 px-5 rounded-lg bg-primary text-on-primary text-xs font-semibold shadow-sm hover:opacity-90"
+              className="h-9 px-5 rounded-lg bg-accent text-on-accent text-xs font-semibold shadow-sm hover:opacity-90"
             >
               Broadcast
             </button>
@@ -1830,7 +1843,7 @@ export const SuperAdminDashboard: React.FC = () => {
             </button>
             <button
               type="submit"
-              className="h-9 px-5 rounded-lg bg-primary text-on-primary text-xs font-semibold shadow-sm hover:opacity-90"
+              className="h-9 px-5 rounded-lg bg-accent text-on-accent text-xs font-semibold shadow-sm hover:opacity-90"
             >
               Save Privileges
             </button>
@@ -1859,7 +1872,7 @@ export const SuperAdminDashboard: React.FC = () => {
             <button
               type="button"
               onClick={() => confirmDialog?.onConfirm()}
-              className="h-9 px-4 rounded-lg bg-primary text-on-primary text-xs font-semibold shadow-sm hover:opacity-90"
+              className="h-9 px-4 rounded-lg bg-accent text-on-accent text-xs font-semibold shadow-sm hover:opacity-90"
             >
               {confirmDialog?.actionLabel || 'Confirm'}
             </button>

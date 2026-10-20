@@ -1,6 +1,10 @@
 import { supabase, isSupabaseConfigured, getLocalDb, saveLocalDb } from '../lib/supabase';
 import { AnnouncementItem } from '../types';
 import { logAuditAction } from './auditService';
+import { getStorageObjectPath, STORAGE_BUCKETS, deleteImage, deleteReplacedImage } from './storageService';
+
+const isMissingImagePathColumn = (error: any): boolean =>
+  (error?.code === '42703' || error?.code === 'PGRST204') && /image_path/i.test(error?.message || '');
 
 const clubNameMap = async (clubIds: Array<string | null | undefined>) => {
   const ids = [...new Set(clubIds.filter((id): id is string => Boolean(id)))];
@@ -18,7 +22,9 @@ const getReadAnnouncementIds = async (userId?: string) => {
   return new Set((data || []).map((row) => row.announcement_id));
 };
 
-const mapAnnouncement = (row: any, names: Map<string, string>, readIds = new Set<string>()): AnnouncementItem => ({
+const mapAnnouncement = (row: any, names: Map<string, string>, readIds = new Set<string>()): AnnouncementItem => {
+  const imagePath = getStorageObjectPath(STORAGE_BUCKETS.announcementImages, row.image_path);
+  return {
   id: row.id,
   clubId: row.club_id || undefined,
   clubName: row.club_id ? names.get(row.club_id) : undefined,
@@ -28,7 +34,10 @@ const mapAnnouncement = (row: any, names: Map<string, string>, readIds = new Set
   isActive: Boolean(row.published),
   isRead: readIds.has(row.id),
   createdAt: row.created_at,
-});
+  imagePath,
+  imageUrl: imagePath,
+};
+};
 
 export const getPublicAnnouncements = async (userId?: string): Promise<AnnouncementItem[]> => {
   if (isSupabaseConfigured) {
@@ -44,7 +53,7 @@ export const getPublicAnnouncements = async (userId?: string): Promise<Announcem
       clubNameMap(rows.map((row) => row.club_id)),
       getReadAnnouncementIds(userId),
     ]);
-    return rows.map((row) => mapAnnouncement(row, names, readIds));
+    return Promise.all(rows.map((row) => mapAnnouncement(row, names, readIds)));
   }
 
   const db = getLocalDb();
@@ -70,7 +79,7 @@ export const getAllAnnouncements = async (): Promise<AnnouncementItem[]> => {
     if (error) throw error;
     const rows = data || [];
     const names = await clubNameMap(rows.map((row) => row.club_id));
-    return rows.map((row) => mapAnnouncement(row, names));
+    return Promise.all(rows.map((row) => mapAnnouncement(row, names)));
   }
 
   const db = getLocalDb();
@@ -88,6 +97,7 @@ export const createAnnouncement = async (
     title: string;
     content: string;
     postedByName: string;
+    imagePath?: string | null;
   },
   actor?: { id: string; email: string; role: string }
 ): Promise<AnnouncementItem> => {
@@ -101,12 +111,16 @@ export const createAnnouncement = async (
           body: data.content,
           created_by: actor?.id,
           published: true,
+          ...(data.imagePath ? { image_path: data.imagePath } : {}),
         },
       ])
       .select('*')
       .single();
 
-    if (error) throw error;
+    if (error) {
+      await deleteImage(STORAGE_BUCKETS.announcementImages, data.imagePath).catch((cleanupError) => console.warn('Could not clean up unreferenced announcement image:', cleanupError));
+      throw error;
+    }
 
     if (actor) {
       await logAuditAction({
@@ -133,6 +147,8 @@ export const createAnnouncement = async (
     postedByName: data.postedByName,
     isActive: true,
     createdAt: new Date().toISOString(),
+    imagePath: data.imagePath || undefined,
+    imageUrl: data.imagePath,
   };
 
   db.announcements.unshift(newAnn);
@@ -153,24 +169,43 @@ export const createAnnouncement = async (
 
 export const updateAnnouncement = async (
   announcementId: string,
-  data: { title: string; content: string },
+  data: { title: string; content: string; imagePath?: string | null },
   actor?: { email: string; role: string }
 ): Promise<void> => {
   if (isSupabaseConfigured) {
-    const { error } = await supabase
+    let previousImagePath: string | null = null;
+    let imageColumnAvailable = true;
+    if (data.imagePath !== undefined) {
+      const { data: existing, error: fetchError } = await supabase.from('announcements').select('image_path').eq('id', announcementId).maybeSingle();
+      if (fetchError && !isMissingImagePathColumn(fetchError)) throw fetchError;
+      if (fetchError) {
+        imageColumnAvailable = false;
+        if (data.imagePath) throw new Error('Announcement images are unavailable until the image_path schema change is deployed. No announcement update was made.');
+      } else {
+        previousImagePath = existing?.image_path || null;
+      }
+    }
+    const { data: updated, error } = await supabase
       .from('announcements')
-      .update({ title: data.title, body: data.content })
-      .eq('id', announcementId);
+      .update({ title: data.title, body: data.content, ...(data.imagePath !== undefined && imageColumnAvailable ? { image_path: data.imagePath } : {}) })
+      .eq('id', announcementId)
+      .select('id')
+      .maybeSingle();
 
     if (error) throw error;
+    if (!updated) throw new Error('Announcement update affected no rows; its existing image was kept.');
+    if (data.imagePath !== undefined && imageColumnAvailable) await deleteReplacedImage(STORAGE_BUCKETS.announcementImages, previousImagePath, data.imagePath);
   } else {
     const db = getLocalDb();
     const idx = db.announcements.findIndex((a) => a.id === announcementId);
-    if (idx !== -1) {
-      db.announcements[idx].title = data.title;
-      db.announcements[idx].content = data.content;
-      saveLocalDb(db);
+    if (idx === -1) throw new Error('Announcement was not found. Refresh the list and try again.');
+    db.announcements[idx].title = data.title;
+    db.announcements[idx].content = data.content;
+    if (data.imagePath !== undefined) {
+      db.announcements[idx].imagePath = data.imagePath || undefined;
+      db.announcements[idx].imageUrl = data.imagePath || undefined;
     }
+    saveLocalDb(db);
   }
 
   if (actor) {
@@ -190,19 +225,21 @@ export const toggleAnnouncementStatus = async (
   actor?: { email: string; role: string }
 ): Promise<void> => {
   if (isSupabaseConfigured) {
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('announcements')
       .update({ published: isActive })
-      .eq('id', announcementId);
+      .eq('id', announcementId)
+      .select('id')
+      .maybeSingle();
 
     if (error) throw error;
+    if (!data) throw new Error('Announcement status was not changed. Confirm that the announcement exists and you can manage it.');
   } else {
     const db = getLocalDb();
     const idx = db.announcements.findIndex((a) => a.id === announcementId);
-    if (idx !== -1) {
-      db.announcements[idx].isActive = isActive;
-      saveLocalDb(db);
-    }
+    if (idx === -1) throw new Error('Announcement was not found. Refresh the list and try again.');
+    db.announcements[idx].isActive = isActive;
+    saveLocalDb(db);
   }
 
   if (actor) {
@@ -221,10 +258,17 @@ export const deleteAnnouncement = async (
   actor?: { email: string; role: string }
 ): Promise<void> => {
   if (isSupabaseConfigured) {
-    const { error } = await supabase.from('announcements').delete().eq('id', announcementId);
+    const { data: existing, error: fetchError } = await supabase.from('announcements').select('image_path').eq('id', announcementId).maybeSingle();
+    if (fetchError && !isMissingImagePathColumn(fetchError)) throw fetchError;
+    const { data: deleted, error } = await supabase.from('announcements').delete().eq('id', announcementId).select('id').maybeSingle();
     if (error) throw error;
+    if (!deleted) throw new Error('Announcement deletion affected no rows; its image was kept.');
+    if (existing?.image_path) await deleteReplacedImage(STORAGE_BUCKETS.announcementImages, existing.image_path, null);
   } else {
     const db = getLocalDb();
+    if (!db.announcements.some((announcement) => announcement.id === announcementId)) {
+      throw new Error('Announcement was not found. Refresh the list and try again.');
+    }
     db.announcements = db.announcements.filter((a) => a.id !== announcementId);
     db.user_announcement_reads = db.user_announcement_reads.filter((r) => r.announcementId !== announcementId);
     saveLocalDb(db);

@@ -40,10 +40,10 @@ export const RegisterPage: React.FC = () => {
   };
 
   return (
-    <div className="bg-surface font-body-md text-on-surface antialiased flex flex-col min-h-screen">
+    <div className="bg-app font-body-md text-on-surface antialiased flex flex-col min-h-screen">
       <Header subtitle="Registration" />
 
-      <main className="flex-1 flex flex-col items-center justify-center pt-20 pb-24 md:pb-16 px-4">
+      <main className="flex-1 flex flex-col items-center justify-start md:justify-center pt-24 md:pt-20 pb-24 md:pb-16 px-4">
         <div className="w-full max-w-md bg-surface-container-lowest border border-border-default rounded-2xl p-space-lg shadow-sm flex flex-col gap-space-md">
           <div className="flex flex-col gap-1 text-center">
             <h1 className="font-headline-md text-on-surface font-bold tracking-tight">
@@ -71,7 +71,7 @@ export const RegisterPage: React.FC = () => {
 
               <Link
                 to="/login"
-                className="h-10 bg-primary text-on-primary font-label-md rounded-xl flex items-center justify-center font-semibold hover:opacity-90 shadow-sm transition-opacity mt-2 text-xs"
+                className="h-10 bg-accent text-on-accent font-label-md rounded-xl flex items-center justify-center font-semibold hover:opacity-90 shadow-sm transition-opacity mt-2 text-xs"
               >
                 Go to Sign In
               </Link>
@@ -156,7 +156,7 @@ export const RegisterPage: React.FC = () => {
               <button
                 type="submit"
                 disabled={loading}
-                className="h-11 bg-primary text-on-primary font-label-md rounded-xl font-semibold hover:opacity-90 shadow-sm active:scale-[0.98] transition-all mt-2 disabled:opacity-50 text-xs"
+                className="h-11 bg-accent text-on-accent font-label-md rounded-xl font-semibold hover:opacity-90 shadow-sm active:scale-[0.98] transition-all mt-2 disabled:opacity-50 text-xs"
               >
                 {loading ? 'Creating Account...' : 'Register as Student'}
               </button>

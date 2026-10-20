@@ -12,9 +12,11 @@ import { getClubAdminStats } from '../services/statsService';
 import { getMembershipRequestsForClub, reviewMembership } from '../services/membershipService';
 import { getEventsForClub, createEvent, updateEvent, deleteEvent } from '../services/eventService';
 import { getAnnouncementsForClub, createAnnouncement, deleteAnnouncement } from '../services/announcementService';
+import { STORAGE_BUCKETS } from '../services/storageService';
+import { StorageImage } from '../components/StorageImage';
 
 export const ClubAdminDashboard: React.FC = () => {
-  const { user, isAuthenticated } = useAuth();
+  const { user, isAuthenticated, loading: authLoading } = useAuth();
   const navigate = useNavigate();
 
   const [club, setClub] = useState<Club | null>(null);
@@ -30,6 +32,7 @@ export const ClubAdminDashboard: React.FC = () => {
   const [clubEvents, setClubEvents] = useState<EventItem[]>([]);
   const [clubAnnouncements, setClubAnnouncements] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   // Modals
@@ -51,6 +54,7 @@ export const ClubAdminDashboard: React.FC = () => {
   // Form states - Announcement
   const [announcementTitle, setAnnouncementTitle] = useState('');
   const [announcementContent, setAnnouncementContent] = useState('');
+  const [announcementImagePath, setAnnouncementImagePath] = useState('');
   const [announcementPosting, setAnnouncementPosting] = useState(false);
 
   // Form states - Edit Club Charter & Logo
@@ -64,21 +68,27 @@ export const ClubAdminDashboard: React.FC = () => {
   const [clubSaving, setClubSaving] = useState(false);
 
   useEffect(() => {
+    if (authLoading) return;
     if (!isAuthenticated) {
       navigate('/login');
       return;
     }
-    if (user && user.role !== 'CLUB_ADMIN' && user.role !== 'SUPER_ADMIN') {
+    if (user?.role === 'SUPER_ADMIN') {
+      navigate('/admin');
+      return;
+    }
+    if (user && user.role !== 'CLUB_ADMIN') {
       navigate('/student');
       return;
     }
     fetchClubData();
-  }, [isAuthenticated, user?.role, user?.assignedClubId]);
+  }, [authLoading, isAuthenticated, user?.role, user?.assignedClubId]);
 
   const fetchClubData = async () => {
     if (!user) return;
     try {
       setLoading(true);
+      setLoadError(null);
       const targetClubId = user.assignedClubId;
       if (!targetClubId) {
         setClub(null);
@@ -95,7 +105,7 @@ export const ClubAdminDashboard: React.FC = () => {
         setEditDesc(clubData.description || '');
         setEditEmail(clubData.contactEmail || '');
         setEditPhone(clubData.contactPhone || '');
-        setEditLogoUrl(clubData.logoUrl || '');
+        setEditLogoUrl(clubData.logoPath || '');
 
         const [statsData, reqs, approved, evts, anns] = await Promise.all([
           getClubAdminStats(targetClubId),
@@ -113,6 +123,7 @@ export const ClubAdminDashboard: React.FC = () => {
       }
     } catch (err: any) {
       console.warn('Error fetching club officer data:', err);
+      setLoadError(err?.message || 'Could not load club data. Check your connection and try again.');
     } finally {
       setLoading(false);
     }
@@ -189,6 +200,7 @@ export const ClubAdminDashboard: React.FC = () => {
           title: announcementTitle.trim(),
           content: announcementContent.trim(),
           postedByName: user.fullName || club.name,
+          imagePath: announcementImagePath || null,
         },
         { id: user.id, email: user.email, role: user.role }
       );
@@ -197,6 +209,7 @@ export const ClubAdminDashboard: React.FC = () => {
       setShowAnnouncementModal(false);
       setAnnouncementTitle('');
       setAnnouncementContent('');
+      setAnnouncementImagePath('');
       await fetchClubData();
     } catch (err: any) {
       setToastMessage(err.message || 'Failed to post announcement.');
@@ -230,7 +243,7 @@ export const ClubAdminDashboard: React.FC = () => {
           description: editDesc.trim(),
           contactEmail: editEmail.trim(),
           contactPhone: editPhone.trim(),
-          logoUrl: editLogoUrl || undefined,
+          logoUrl: editLogoUrl || null,
         },
         { email: user.email, role: user.role }
       );
@@ -246,12 +259,19 @@ export const ClubAdminDashboard: React.FC = () => {
   };
 
   return (
-    <div className="bg-surface font-body-md text-on-surface antialiased flex flex-col min-h-screen">
+    <div className="bg-app font-body-md text-on-surface antialiased flex flex-col min-h-screen">
       <Header subtitle="Club Officer Hub" />
 
-      <main className="flex-1 w-full pt-20 pb-24 md:pb-12 bg-surface px-4 sm:px-6 lg:px-8">
+      <main className="flex-1 w-full pt-20 pb-24 md:pb-12 bg-app px-4 sm:px-6 lg:px-8">
         <div className="max-w-7xl mx-auto flex flex-col gap-6">
-          {!club && !loading ? (
+          {loadError && !loading ? (
+            <div role="alert" className="bg-surface-container-lowest p-8 rounded-2xl border border-border-default shadow-sm text-center flex flex-col items-center gap-3">
+              <span className="material-symbols-outlined text-[32px] text-on-surface-variant">error</span>
+              <h1 className="text-lg font-bold text-on-surface">Could not load your club</h1>
+              <p className="text-xs text-on-surface-variant max-w-md">{loadError}</p>
+              <button type="button" onClick={fetchClubData} className="h-9 px-4 rounded-lg bg-accent text-on-accent text-xs font-semibold">Retry</button>
+            </div>
+          ) : !club && !loading ? (
             <div className="bg-surface-container-lowest p-8 rounded-2xl border border-border-default shadow-sm text-center flex flex-col items-center gap-3">
               <span className="material-symbols-outlined text-[32px] text-on-surface-variant">
                 assignment_late
@@ -268,7 +288,7 @@ export const ClubAdminDashboard: React.FC = () => {
                 <div className="flex items-start gap-4">
                   {club?.logoUrl ? (
                     <div className="w-14 h-14 rounded-xl border border-border-default overflow-hidden bg-surface-container shrink-0">
-                      <img src={club.logoUrl} alt={club.name} className="w-full h-full object-cover" />
+                      <StorageImage bucket={STORAGE_BUCKETS.clubLogos} path={club.logoPath} alt={club.name} className="w-full h-full object-cover" />
                     </div>
                   ) : (
                     <div className="w-14 h-14 rounded-xl bg-surface-container flex items-center justify-center text-primary font-bold text-lg shrink-0 border border-border-default">
@@ -282,7 +302,7 @@ export const ClubAdminDashboard: React.FC = () => {
                         Charter: {club?.refId || 'N/A'}
                       </span>
                       <span className="inline-flex items-center gap-1 text-xs bg-surface-container text-primary font-semibold px-2 py-0.5 rounded-full border border-border-default">
-                        <span className="w-1.5 h-1.5 rounded-full bg-primary"></span>
+                        <span className="w-1.5 h-1.5 rounded-full bg-accent"></span>
                         Club Officer
                       </span>
                     </div>
@@ -303,7 +323,7 @@ export const ClubAdminDashboard: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => setShowCreateEventModal(true)}
-                    className="h-10 px-4 bg-primary text-on-primary text-xs sm:text-sm font-semibold rounded-xl flex items-center gap-2 hover:opacity-90 shadow-sm transition-opacity"
+                    className="h-10 px-4 bg-accent text-on-accent text-xs sm:text-sm font-semibold rounded-xl flex items-center gap-2 hover:opacity-90 shadow-sm transition-opacity"
                   >
                     <span className="material-symbols-outlined text-[18px]">add</span>
                     <span>Create Event</span>
@@ -429,7 +449,7 @@ export const ClubAdminDashboard: React.FC = () => {
                               <button
                                 type="button"
                                 onClick={() => handleReviewRequest(req.id, 'APPROVED')}
-                                className="h-8 px-4 rounded-lg bg-primary text-on-primary text-xs font-semibold hover:opacity-90 shadow-sm"
+                                className="h-8 px-4 rounded-lg bg-accent text-on-accent text-xs font-semibold hover:opacity-90 shadow-sm"
                               >
                                 Approve
                               </button>
@@ -475,7 +495,7 @@ export const ClubAdminDashboard: React.FC = () => {
                             >
                               {evt.posterUrl && (
                                 <div className="w-full h-32 rounded-lg overflow-hidden border border-border-default bg-surface-container">
-                                  <img src={evt.posterUrl} alt={evt.title} className="w-full h-full object-cover" />
+                                  <StorageImage bucket={STORAGE_BUCKETS.eventPosters} path={evt.posterPath} alt={evt.title} className="w-full h-full object-cover" />
                                 </div>
                               )}
 
@@ -501,7 +521,7 @@ export const ClubAdminDashboard: React.FC = () => {
                                   </span>
                                 </div>
                                 <div className="w-full h-2 rounded-full bg-surface-container overflow-hidden">
-                                  <div className="h-full bg-primary rounded-full transition-all" style={{ width: `${percent}%` }}></div>
+                                  <div className="h-full bg-accent rounded-full transition-all" style={{ width: `${percent}%` }}></div>
                                 </div>
                               </div>
 
@@ -643,6 +663,7 @@ export const ClubAdminDashboard: React.FC = () => {
                               </button>
                             </div>
                             <p className="text-on-surface-variant line-clamp-2 leading-relaxed">{ann.content}</p>
+                            {ann.imagePath && <StorageImage bucket={STORAGE_BUCKETS.announcementImages} path={ann.imagePath} alt="Announcement attachment" className="mt-2 max-h-32 w-full rounded-lg object-cover" />}
                           </div>
                         ))}
                       </div>
@@ -651,7 +672,7 @@ export const ClubAdminDashboard: React.FC = () => {
                     <button
                       type="button"
                       onClick={() => setShowAnnouncementModal(true)}
-                      className="w-full h-9 rounded-lg bg-primary text-on-primary text-xs font-semibold hover:opacity-90 transition-opacity flex items-center justify-center gap-1.5 shadow-sm mt-1"
+                      className="w-full h-9 rounded-lg bg-accent text-on-accent text-xs font-semibold hover:opacity-90 transition-opacity flex items-center justify-center gap-1.5 shadow-sm mt-1"
                     >
                       <span className="material-symbols-outlined text-[16px]">send</span>
                       <span>Post Announcement</span>
@@ -756,11 +777,11 @@ export const ClubAdminDashboard: React.FC = () => {
 
           {/* Event Poster Upload */}
           <ImageUploader
-            bucket="event-posters"
+            bucket={STORAGE_BUCKETS.eventPosters}
             folderId={user?.assignedClubId}
             label="Event Poster / Banner (Optional)"
             currentImageUrl={eventPosterUrl}
-            onImageUploaded={(url) => setEventPosterUrl(url)}
+            onImageUploaded={(_url, path) => setEventPosterUrl(path)}
             onImageRemoved={() => setEventPosterUrl('')}
             helperText="JPG, PNG, WebP (max 5 MB)"
             aspectRatio="banner"
@@ -777,7 +798,7 @@ export const ClubAdminDashboard: React.FC = () => {
             <button
               type="submit"
               disabled={eventCreating}
-              className="h-9 px-5 rounded-lg bg-primary text-on-primary text-xs font-semibold shadow-sm hover:opacity-90 disabled:opacity-50"
+              className="h-9 px-5 rounded-lg bg-accent text-on-accent text-xs font-semibold shadow-sm hover:opacity-90 disabled:opacity-50"
             >
               {eventCreating ? 'Publishing...' : 'Publish Event'}
             </button>
@@ -820,6 +841,16 @@ export const ClubAdminDashboard: React.FC = () => {
             />
           </div>
 
+          <ImageUploader
+            bucket={STORAGE_BUCKETS.announcementImages}
+            folderId={club?.id}
+            label="Announcement Image (Optional)"
+            currentImageUrl={announcementImagePath}
+            onImageUploaded={(_url, path) => setAnnouncementImagePath(path)}
+            onImageRemoved={() => setAnnouncementImagePath('')}
+            aspectRatio="banner"
+          />
+
           <div className="flex justify-end gap-2 pt-2 border-t border-border-default">
             <button
               type="button"
@@ -831,7 +862,7 @@ export const ClubAdminDashboard: React.FC = () => {
             <button
               type="submit"
               disabled={announcementPosting}
-              className="h-9 px-5 rounded-lg bg-primary text-on-primary text-xs font-semibold shadow-sm hover:opacity-90 disabled:opacity-50"
+              className="h-9 px-5 rounded-lg bg-accent text-on-accent text-xs font-semibold shadow-sm hover:opacity-90 disabled:opacity-50"
             >
               {announcementPosting ? 'Posting...' : 'Post Bulletin'}
             </button>
@@ -909,11 +940,11 @@ export const ClubAdminDashboard: React.FC = () => {
 
           {/* Club Logo Upload */}
           <ImageUploader
-            bucket="club-logos"
+            bucket={STORAGE_BUCKETS.clubLogos}
             folderId={user?.assignedClubId}
             label="Club Logo"
             currentImageUrl={editLogoUrl}
-            onImageUploaded={(url) => setEditLogoUrl(url)}
+            onImageUploaded={(_url, path) => setEditLogoUrl(path)}
             onImageRemoved={() => setEditLogoUrl('')}
             helperText="JPG, PNG, WebP (max 5 MB)"
             aspectRatio="square"
@@ -930,7 +961,7 @@ export const ClubAdminDashboard: React.FC = () => {
             <button
               type="submit"
               disabled={clubSaving}
-              className="h-9 px-5 rounded-lg bg-primary text-on-primary text-xs font-semibold shadow-sm hover:opacity-90 disabled:opacity-50"
+              className="h-9 px-5 rounded-lg bg-accent text-on-accent text-xs font-semibold shadow-sm hover:opacity-90 disabled:opacity-50"
             >
               {clubSaving ? 'Saving...' : 'Save Changes'}
             </button>
@@ -959,7 +990,7 @@ export const ClubAdminDashboard: React.FC = () => {
             <button
               type="button"
               onClick={confirmDeleteEvent}
-              className="h-9 px-4 rounded-lg bg-primary text-on-primary text-xs font-semibold shadow-sm hover:opacity-90"
+              className="h-9 px-4 rounded-lg bg-accent text-on-accent text-xs font-semibold shadow-sm hover:opacity-90"
             >
               Delete Event
             </button>

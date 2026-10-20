@@ -86,11 +86,15 @@ export const cancelMembershipRequest = async (
   clubId: string, userId: string, actor?: { email: string; role: string }
 ): Promise<void> => {
   if (isSupabaseConfigured) {
-    const { error } = await supabase.from('club_memberships').delete()
-      .eq('club_id', clubId).eq('student_id', userId).eq('status', 'pending');
+    const { data, error } = await supabase.from('club_memberships').delete()
+      .eq('club_id', clubId).eq('student_id', userId).eq('status', 'pending').select('id');
     if (error) throw error;
+    if (!data?.length) throw new Error('No pending membership request was withdrawn. Refresh the club status and try again.');
   } else {
     const db = getLocalDb();
+    if (!db.club_memberships.some((m) => m.clubId === clubId && m.userId === userId && m.status === 'PENDING')) {
+      throw new Error('No pending membership request was withdrawn. Refresh the club status and try again.');
+    }
     db.club_memberships = db.club_memberships.filter(
       (m) => !(m.clubId === clubId && m.userId === userId && m.status === 'PENDING')
     );
@@ -135,17 +139,17 @@ export const reviewMembership = async (
   actor?: { email: string; role: string }
 ): Promise<void> => {
   if (isSupabaseConfigured) {
-    const { error } = await supabase.from('club_memberships')
-      .update({ status: status.toLowerCase() }).eq('id', membershipId);
+    const { data, error } = await supabase.from('club_memberships')
+      .update({ status: status.toLowerCase() }).eq('id', membershipId).select('id').maybeSingle();
     if (error) throw error;
+    if (!data) throw new Error('Membership status was not changed. The request may be missing or you may not manage its club.');
   } else {
     const db = getLocalDb();
     const index = db.club_memberships.findIndex((m) => m.id === membershipId);
-    if (index !== -1) {
-      db.club_memberships[index].status = status;
-      db.club_memberships[index].reviewedAt = new Date().toISOString();
-      saveLocalDb(db);
-    }
+    if (index === -1) throw new Error('Membership request was not found. Refresh the list and try again.');
+    db.club_memberships[index].status = status;
+    db.club_memberships[index].reviewedAt = new Date().toISOString();
+    saveLocalDb(db);
   }
   if (actor) await logAuditAction({
     actionType: 'MEMBERSHIP_REVIEW', actorEmail: actor.email, actorRole: actor.role,

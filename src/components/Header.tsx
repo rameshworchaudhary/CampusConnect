@@ -54,7 +54,7 @@ export const Header: React.FC<HeaderProps> = ({
           </button>
 
           <Link to="/" className="flex items-center gap-2 sm:gap-2.5 group min-w-0">
-            <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center text-on-primary shrink-0 shadow-sm">
+            <div className="w-8 h-8 rounded-lg bg-accent flex items-center justify-center text-on-accent shrink-0 shadow-sm">
               <span className="material-symbols-outlined text-[18px] sm:text-[20px]">school</span>
             </div>
             <div className="flex flex-col min-w-0">
@@ -75,7 +75,7 @@ export const Header: React.FC<HeaderProps> = ({
               className={({ isActive }) =>
                 `px-3 py-1.5 rounded-lg text-xs lg:text-sm font-medium transition-colors whitespace-nowrap ${
                   isActive
-                    ? 'bg-surface-container-high text-primary font-semibold'
+                    ? 'bg-accent text-on-accent font-semibold'
                     : 'text-on-surface-variant hover:text-primary hover:bg-surface-container-low'
                 }`
               }
@@ -87,7 +87,7 @@ export const Header: React.FC<HeaderProps> = ({
               className={({ isActive }) =>
                 `px-3 py-1.5 rounded-lg text-xs lg:text-sm font-medium transition-colors whitespace-nowrap ${
                   isActive
-                    ? 'bg-surface-container-high text-primary font-semibold'
+                    ? 'bg-accent text-on-accent font-semibold'
                     : 'text-on-surface-variant hover:text-primary hover:bg-surface-container-low'
                 }`
               }
@@ -99,7 +99,7 @@ export const Header: React.FC<HeaderProps> = ({
               className={({ isActive }) =>
                 `px-3 py-1.5 rounded-lg text-xs lg:text-sm font-medium transition-colors whitespace-nowrap ${
                   isActive
-                    ? 'bg-surface-container-high text-primary font-semibold'
+                    ? 'bg-accent text-on-accent font-semibold'
                     : 'text-on-surface-variant hover:text-primary hover:bg-surface-container-low'
                 }`
               }
@@ -112,7 +112,7 @@ export const Header: React.FC<HeaderProps> = ({
                 className={({ isActive }) =>
                   `px-3 py-1.5 rounded-lg text-xs lg:text-sm font-medium transition-colors whitespace-nowrap ${
                     isActive
-                      ? 'bg-primary text-on-primary font-semibold'
+                      ? 'bg-accent text-on-accent font-semibold'
                       : 'text-on-surface-variant hover:text-primary hover:bg-surface-container-low'
                   }`
                 }
@@ -139,7 +139,7 @@ export const Header: React.FC<HeaderProps> = ({
           >
             <span className="material-symbols-outlined text-[20px] sm:text-[22px]">notifications</span>
             {unreadCount > 0 && (
-              <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-primary ring-2 ring-surface"></span>
+              <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-accent ring-2 ring-surface"></span>
             )}
           </button>
 
@@ -151,7 +151,7 @@ export const Header: React.FC<HeaderProps> = ({
                 onClick={() => setProfileDropdownOpen(!profileDropdownOpen)}
                 className="flex items-center gap-2 p-1 rounded-xl hover:bg-surface-container transition-colors focus:outline-none"
               >
-                <div className="w-8 h-8 rounded-full bg-primary text-on-primary font-label-caps text-label-caps flex items-center justify-center font-bold shadow-sm text-xs">
+                <div className="w-8 h-8 rounded-full bg-accent text-on-accent font-label-caps text-label-caps flex items-center justify-center font-bold shadow-sm text-xs">
                   {user.fullName ? user.fullName.charAt(0).toUpperCase() : 'U'}
                 </div>
                 <div className="hidden lg:flex flex-col text-left">
@@ -236,7 +236,7 @@ export const Header: React.FC<HeaderProps> = ({
               </Link>
               <Link
                 to="/register"
-                className="h-8 sm:h-9 px-2.5 sm:px-3.5 rounded-lg bg-primary text-on-primary text-xs font-semibold flex items-center justify-center shadow-sm hover:opacity-90 transition-opacity"
+                className="h-8 sm:h-9 px-2.5 sm:px-3.5 rounded-lg bg-accent text-on-accent text-xs font-semibold flex items-center justify-center shadow-sm hover:opacity-90 transition-opacity"
               >
                 Join
               </Link>
@@ -253,7 +253,7 @@ export const Header: React.FC<HeaderProps> = ({
               to="/"
               className={`flex flex-col items-center justify-center py-2.5 px-2 rounded-xl text-xs font-medium border text-center transition-colors ${
                 location.pathname === '/'
-                  ? 'bg-primary text-on-primary border-primary font-semibold'
+                  ? 'bg-accent text-on-accent border-accent font-semibold'
                   : 'bg-surface-container-low text-on-surface border-border-default hover:bg-surface-container'
               }`}
             >
@@ -265,7 +265,7 @@ export const Header: React.FC<HeaderProps> = ({
               to="/clubs"
               className={`flex flex-col items-center justify-center py-2.5 px-2 rounded-xl text-xs font-medium border text-center transition-colors ${
                 location.pathname === '/clubs'
-                  ? 'bg-primary text-on-primary border-primary font-semibold'
+                  ? 'bg-accent text-on-accent border-accent font-semibold'
                   : 'bg-surface-container-low text-on-surface border-border-default hover:bg-surface-container'
               }`}
             >
@@ -277,7 +277,7 @@ export const Header: React.FC<HeaderProps> = ({
               to="/events"
               className={`flex flex-col items-center justify-center py-2.5 px-2 rounded-xl text-xs font-medium border text-center transition-colors ${
                 location.pathname === '/events'
-                  ? 'bg-primary text-on-primary border-primary font-semibold'
+                  ? 'bg-accent text-on-accent border-accent font-semibold'
                   : 'bg-surface-container-low text-on-surface border-border-default hover:bg-surface-container'
               }`}
             >
@@ -304,7 +304,7 @@ export const Header: React.FC<HeaderProps> = ({
 
               <Link
                 to={getDashboardPath()}
-                className="h-10 px-3 rounded-xl bg-primary text-on-primary text-xs font-semibold flex items-center justify-center gap-2 shadow-sm"
+                className="h-10 px-3 rounded-xl bg-accent text-on-accent text-xs font-semibold flex items-center justify-center gap-2 shadow-sm"
               >
                 <span className="material-symbols-outlined text-[18px]">space_dashboard</span>
                 <span>Open {getDashboardLabel()}</span>
@@ -332,7 +332,7 @@ export const Header: React.FC<HeaderProps> = ({
               </Link>
               <Link
                 to="/register"
-                className="h-10 rounded-xl bg-primary text-on-primary text-xs font-semibold flex items-center justify-center shadow-sm hover:opacity-90 transition-opacity"
+                className="h-10 rounded-xl bg-accent text-on-accent text-xs font-semibold flex items-center justify-center shadow-sm hover:opacity-90 transition-opacity"
               >
                 Create Account
               </Link>

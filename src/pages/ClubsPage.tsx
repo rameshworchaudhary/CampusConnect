@@ -9,6 +9,8 @@ import { getPublicClubs, registerClub } from '../services/clubService';
 import { requestMembership } from '../services/membershipService';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
+import { STORAGE_BUCKETS } from '../services/storageService';
+import { StorageImage } from '../components/StorageImage';
 
 export const ClubsPage: React.FC = () => {
   const { user, isAuthenticated } = useAuth();
@@ -16,6 +18,7 @@ export const ClubsPage: React.FC = () => {
 
   const [clubs, setClubs] = useState<Club[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [search, setSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [selectedClub, setSelectedClub] = useState<Club | null>(null);
@@ -43,10 +46,12 @@ export const ClubsPage: React.FC = () => {
   const fetchClubs = async () => {
     try {
       setLoading(true);
+      setLoadError(false);
       const data = await getPublicClubs(user?.id);
       setClubs(data);
     } catch (err: any) {
       console.warn('Could not load clubs:', err);
+      setLoadError(true);
     } finally {
       setLoading(false);
     }
@@ -138,10 +143,10 @@ export const ClubsPage: React.FC = () => {
   };
 
   return (
-    <div className="bg-surface font-body-md text-on-surface antialiased flex flex-col min-h-screen">
+    <div className="bg-app font-body-md text-on-surface antialiased flex flex-col min-h-screen">
       <Header subtitle="Clubs Directory" />
 
-      <main className="flex-1 w-full pt-20 pb-24 md:pb-12 bg-surface px-4 sm:px-6 lg:px-8">
+      <main className="flex-1 w-full pt-20 pb-24 md:pb-12 bg-app px-4 sm:px-6 lg:px-8">
         <div className="max-w-7xl mx-auto flex flex-col gap-6">
           {/* Header Banner */}
           <div className="bg-surface-container-lowest p-5 sm:p-6 rounded-2xl border border-border-default shadow-sm flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -166,7 +171,7 @@ export const ClubsPage: React.FC = () => {
                 }
                 setShowRegisterClubModal(true);
               }}
-              className="h-10 px-4 rounded-xl bg-primary text-on-primary text-xs sm:text-sm font-semibold flex items-center gap-1.5 shadow-sm hover:opacity-90 transition-opacity self-start sm:self-auto shrink-0"
+              className="h-10 px-4 rounded-xl bg-accent text-on-accent text-xs sm:text-sm font-semibold flex items-center gap-1.5 shadow-sm hover:opacity-90 transition-opacity self-start sm:self-auto shrink-0"
             >
               <span className="material-symbols-outlined text-[18px]">add</span>
               <span>Register a Club</span>
@@ -196,7 +201,7 @@ export const ClubsPage: React.FC = () => {
                 onClick={() => setSelectedCategory(cat)}
                 className={`h-8 px-3.5 rounded-lg text-xs whitespace-nowrap transition-colors border ${
                   selectedCategory === cat
-                    ? 'bg-primary text-on-primary border-primary font-semibold shadow-sm'
+                    ? 'bg-accent text-on-accent border-accent font-semibold shadow-sm'
                     : 'bg-surface-container text-on-surface-variant border-border-default hover:text-on-surface'
                 }`}
               >
@@ -210,6 +215,11 @@ export const ClubsPage: React.FC = () => {
             <div className="py-16 text-center text-on-surface-variant text-sm">
               Loading organizations directory...
             </div>
+          ) : loadError ? (
+            <div role="alert" className="bg-surface-container-lowest rounded-2xl p-8 shadow-sm border border-border-default flex flex-col items-center text-center gap-3">
+              <p className="text-sm text-on-surface-variant">Could not load clubs.</p>
+              <button type="button" onClick={() => void fetchClubs()} className="h-10 px-4 rounded-xl bg-accent text-on-accent text-sm font-semibold hover:opacity-90">Retry</button>
+            </div>
           ) : filteredClubs.length > 0 ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5 sm:gap-4">
               {filteredClubs.map((club) => (
@@ -222,7 +232,7 @@ export const ClubsPage: React.FC = () => {
                       <div className="flex items-center gap-3 min-w-0">
                         {club.logoUrl ? (
                           <div className="w-12 h-12 rounded-xl border border-border-default overflow-hidden bg-surface-container shrink-0">
-                            <img src={club.logoUrl} alt={club.name} className="w-full h-full object-cover" />
+                            <StorageImage bucket={STORAGE_BUCKETS.clubLogos} path={club.logoPath} alt={club.name} className="w-full h-full object-cover" />
                           </div>
                         ) : (
                           <div className="w-12 h-12 rounded-xl bg-surface-container flex items-center justify-center text-primary shrink-0 border border-border-default">
@@ -274,7 +284,7 @@ export const ClubsPage: React.FC = () => {
                           club.userMembershipStatus === 'PENDING'
                         }
                         onClick={() => handleJoinClub(club.id)}
-                        className="h-8 px-3.5 rounded-lg bg-primary text-on-primary text-xs font-semibold flex items-center gap-1 shadow-sm active:scale-95 transition-transform disabled:opacity-50"
+                        className="h-8 px-3.5 rounded-lg bg-accent text-on-accent text-xs font-semibold flex items-center gap-1 shadow-sm active:scale-95 transition-transform disabled:opacity-50"
                       >
                         <span>
                           {club.userMembershipStatus === 'APPROVED'
@@ -310,7 +320,7 @@ export const ClubsPage: React.FC = () => {
                     if (!isAuthenticated) navigate('/login');
                     else setShowRegisterClubModal(true);
                   }}
-                  className="mt-2 h-9 px-4 rounded-xl bg-primary text-on-primary text-xs font-semibold shadow-sm hover:opacity-90"
+                  className="mt-2 h-9 px-4 rounded-xl bg-accent text-on-accent text-xs font-semibold shadow-sm hover:opacity-90"
                 >
                   Register a Club
                 </button>
@@ -339,7 +349,7 @@ export const ClubsPage: React.FC = () => {
 
             {selectedClub.logoUrl && (
               <div className="w-20 h-20 rounded-xl overflow-hidden border border-border-default mx-auto bg-surface-container">
-                <img src={selectedClub.logoUrl} alt={selectedClub.name} className="w-full h-full object-cover" />
+                <StorageImage bucket={STORAGE_BUCKETS.clubLogos} path={selectedClub.logoPath} alt={selectedClub.name} className="w-full h-full object-cover" />
               </div>
             )}
 
@@ -388,7 +398,7 @@ export const ClubsPage: React.FC = () => {
                   selectedClub.userMembershipStatus === 'PENDING'
                 }
                 onClick={() => handleJoinClub(selectedClub.id)}
-                className="h-9 px-4 rounded-lg bg-primary text-on-primary text-xs font-semibold flex items-center gap-1.5 shadow-sm active:scale-95 disabled:opacity-50"
+                className="h-9 px-4 rounded-lg bg-accent text-on-accent text-xs font-semibold flex items-center gap-1.5 shadow-sm active:scale-95 disabled:opacity-50"
               >
                 <span>
                   {selectedClub.userMembershipStatus === 'APPROVED'
@@ -539,11 +549,11 @@ export const ClubsPage: React.FC = () => {
 
           {/* Logo Upload Component */}
           <ImageUploader
-            bucket="club-logos"
+            bucket={STORAGE_BUCKETS.clubLogos}
             folderId={user?.id}
             label="Club Emblem / Logo"
             currentImageUrl={newClubLogoUrl}
-            onImageUploaded={(url) => setNewClubLogoUrl(url)}
+            onImageUploaded={(_url, path) => setNewClubLogoUrl(path)}
             onImageRemoved={() => setNewClubLogoUrl('')}
             helperText="JPG, PNG, WebP (max 5 MB)"
             aspectRatio="square"
@@ -565,7 +575,7 @@ export const ClubsPage: React.FC = () => {
             <button
               type="submit"
               disabled={registeringClub}
-              className="h-9 px-4 rounded-lg bg-primary text-on-primary text-xs font-semibold shadow-sm hover:opacity-90 disabled:opacity-50"
+              className="h-9 px-4 rounded-lg bg-accent text-on-accent text-xs font-semibold shadow-sm hover:opacity-90 disabled:opacity-50"
             >
               {registeringClub ? 'Submitting Application...' : 'Submit Application'}
             </button>

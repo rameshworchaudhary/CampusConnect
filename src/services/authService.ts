@@ -1,8 +1,9 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { Role, User } from '../types';
 import { logAuditAction } from './auditService';
+import { getStorageImageUrl, getStorageObjectPath, STORAGE_BUCKETS, deleteReplacedImage } from './storageService';
 
-const normalizeProfileRole = (value: string): Role => {
+export const normalizeProfileRole = (value: string): Role => {
   switch (value.toLowerCase()) {
     case 'student':
       return 'STUDENT';
@@ -77,7 +78,7 @@ export const signUp = async (params: {
           }
         : null,
       message: data.session
-        ? 'Account created and signed in successfully!'
+        ? 'Account created. CampusConnect will verify your account status before allowing access.'
         : 'Registration successful! If confirmation is enabled, check your email for verification link.',
     };
   }
@@ -101,6 +102,11 @@ export const signIn = async (params: {
     // Repair legacy accounts missing their trigger-created profile when the
     // additive ensure_own_profile migration has been applied.
     const { data: repairedProfile, error: repairErr } = await supabase.rpc('ensure_own_profile');
+
+    if (repairErr && /deactivated/i.test(repairErr.message)) {
+      await supabase.auth.signOut();
+      throw new Error('Your account has been deactivated. Please contact campus administration.');
+    }
 
     // Older installs may not have the repair RPC yet. If an existing profile
     // is readable, allow sign-in while reporting a missing profile precisely.
@@ -126,14 +132,16 @@ export const signIn = async (params: {
       );
     }
 
-    if (profile.is_active === false) {
+    if (typeof profile.is_active !== 'boolean') {
+      await supabase.auth.signOut();
+      throw new Error('Account status schema is not ready. Apply the CampusConnect compatibility migration, then retry.');
+    }
+    if (!profile.is_active) {
       await supabase.auth.signOut();
       throw new Error('Your account has been deactivated. Please contact campus administration.');
     }
 
-    const avatarUrl = profile.avatar_url && !profile.avatar_url.startsWith('http')
-      ? (await supabase.storage.from('avatars').createSignedUrl(profile.avatar_url, 3600)).data?.signedUrl
-      : profile.avatar_url;
+    const avatarUrl = await getStorageImageUrl(STORAGE_BUCKETS.avatars, profile.avatar_url);
     const assignedClub = await getAssignedClub(profile.id, profile.assigned_club_id);
     const role = normalizeProfileRole(profile.role);
     const userObj: User = {
@@ -143,12 +151,12 @@ export const signIn = async (params: {
       studentId: profile.student_id,
       department: profile.department,
       role,
-      isActive: profile.is_active ?? true,
+      isActive: profile.is_active,
       isVerified: true,
       assignedClubId: profile.assigned_club_id || assignedClub?.id,
       assignedClubName: assignedClub?.name,
       avatarUrl,
-      avatarPath: profile.avatar_url?.startsWith('http') ? undefined : profile.avatar_url,
+      avatarPath: getStorageObjectPath(STORAGE_BUCKETS.avatars, profile.avatar_url),
     };
 
     await logAuditAction({
@@ -178,17 +186,24 @@ export const getCurrentUser = async (): Promise<User | null> => {
 
     await supabase.rpc('ensure_own_profile');
 
-    const { data: profile } = await supabase
+    const { data: profile, error: profileError } = await supabase
       .from('profiles')
       .select('*')
       .eq('id', authData.user.id)
       .maybeSingle();
 
-    if (!profile) return null;
+    if (profileError) throw profileError;
+    if (!profile) {
+      await supabase.auth.signOut();
+      return null;
+    }
 
-    const avatarUrl = profile.avatar_url && !profile.avatar_url.startsWith('http')
-      ? (await supabase.storage.from('avatars').createSignedUrl(profile.avatar_url, 3600)).data?.signedUrl
-      : profile.avatar_url;
+    if (typeof profile.is_active !== 'boolean' || !profile.is_active) {
+      await supabase.auth.signOut();
+      return null;
+    }
+
+    const avatarUrl = await getStorageImageUrl(STORAGE_BUCKETS.avatars, profile.avatar_url);
     const assignedClub = await getAssignedClub(profile.id, profile.assigned_club_id);
     const role = normalizeProfileRole(profile.role);
     return {
@@ -198,12 +213,12 @@ export const getCurrentUser = async (): Promise<User | null> => {
       studentId: profile.student_id,
       department: profile.department,
       role,
-      isActive: profile.is_active ?? true,
+      isActive: profile.is_active,
       isVerified: true,
       assignedClubId: profile.assigned_club_id || assignedClub?.id,
       assignedClubName: assignedClub?.name,
       avatarUrl,
-      avatarPath: profile.avatar_url?.startsWith('http') ? undefined : profile.avatar_url,
+      avatarPath: getStorageObjectPath(STORAGE_BUCKETS.avatars, profile.avatar_url),
     };
   }
 
@@ -212,10 +227,13 @@ export const getCurrentUser = async (): Promise<User | null> => {
 
 export const updateProfile = async (
   userId: string,
-  params: { fullName: string; studentId?: string; department?: string; avatarPath?: string },
+  params: { fullName: string; studentId?: string; department?: string; avatarPath?: string | null },
   actor?: { email: string; role: string }
-): Promise<void> => {
+): Promise<{ fullName: string; studentId: string | null; department: string | null; avatarPath: string | null }> => {
   if (!isSupabaseConfigured) throw new Error('Supabase is not configured.');
+  let savedProfile: { fullName: string; studentId: string | null; department: string | null; avatarPath: string | null };
+  const { data: before, error: beforeError } = await supabase.from('profiles').select('avatar_url').eq('id', userId).maybeSingle();
+  if (beforeError) throw beforeError;
   {
     const payload: any = {
       full_name: params.fullName,
@@ -224,13 +242,34 @@ export const updateProfile = async (
     if (params.department !== undefined) payload.department = params.department;
     if (params.avatarPath !== undefined) payload.avatar_url = params.avatarPath;
 
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('profiles')
       .update(payload)
-      .eq('id', userId);
+      .eq('id', userId)
+      .select('id, full_name, student_id, department, avatar_url')
+      .maybeSingle();
 
-    if (error) throw error;
+    if (error) {
+      console.error(`[Profile update] Failed: ${error.message}`, {
+        code: error.code,
+        details: error.details,
+        hint: error.hint,
+        payloadColumns: Object.keys(payload),
+      });
+      throw error;
+    }
+    if (!data) {
+      throw new Error('Profile update affected no rows. Check that you are signed in and the profile UPDATE policy allows editing your own row.');
+    }
+    savedProfile = {
+      fullName: data.full_name,
+      studentId: data.student_id,
+      department: data.department,
+      avatarPath: data.avatar_url,
+    };
   }
+
+  await deleteReplacedImage(STORAGE_BUCKETS.avatars, before?.avatar_url, savedProfile.avatarPath);
 
   if (actor) {
     await logAuditAction({
@@ -241,6 +280,7 @@ export const updateProfile = async (
       details: `Updated personal profile information`,
     });
   }
+  return savedProfile;
 };
 
 export const changePassword = async (newPassword: string): Promise<void> => {
@@ -261,5 +301,68 @@ export const resetPasswordForEmail = async (email: string): Promise<void> => {
       redirectTo: redirectUrl,
     });
     if (error) throw error;
+  }
+};
+
+/** Verify only the signup confirmation callback configured by signUp(). */
+export const verifySignupEmailCallback = async (callbackUrl: string): Promise<void> => {
+  if (!isSupabaseConfigured) {
+    throw new Error('Email verification is unavailable because Supabase is not configured.');
+  }
+
+  let callback: URL;
+  try {
+    callback = new URL(callbackUrl);
+  } catch {
+    throw new Error('This verification link is malformed. Return to registration and request a new link.');
+  }
+
+  const hashParams = new URLSearchParams(callback.hash.replace(/^#/, ''));
+  const tokenHash = callback.searchParams.get('token_hash');
+  const callbackTypes = [callback.searchParams.get('type'), hashParams.get('type')].filter((value): value is string => Boolean(value));
+  const callbackError = callback.searchParams.get('error_code') || hashParams.get('error_code');
+  if (callbackError) {
+    if (/expired|invalid|otp/i.test(callbackError)) {
+      throw new Error('This verification link is invalid or expired. Return to registration and request a new link.');
+    }
+    throw new Error('Supabase could not complete this verification link. Return to registration and request a new link.');
+  }
+  if (callbackTypes.length === 0 || callbackTypes.some((type) => type !== 'signup')) {
+    throw new Error('This is not a valid signup verification link. Return to registration and request a new link.');
+  }
+
+  let accessToken: string | null = null;
+  if (tokenHash) {
+    const { data, error } = await supabase.auth.verifyOtp({ token_hash: tokenHash, type: 'signup' });
+    if (error) {
+      if (error.status === 400 || error.status === 401) {
+        throw new Error('This verification link is invalid or expired. Return to registration and request a new link.');
+      }
+      throw new Error('We could not reach Supabase to verify this link. Check your connection and retry.');
+    }
+    accessToken = data.session?.access_token ?? null;
+    if (!accessToken) {
+      throw new Error('Supabase accepted the link but did not establish a verification session. Please request a new link.');
+    }
+  } else {
+    accessToken = hashParams.get('access_token');
+  }
+
+  if (!accessToken) {
+    throw new Error('This verification link is missing its signup credentials. Return to registration and request a new link.');
+  }
+
+  // Validate this exact callback token with Auth rather than trusting the URL
+  // or an unrelated session that may already exist in the browser.
+  const { data, error } = await supabase.auth.getUser(accessToken);
+  if (error || !data.user) {
+    if (error?.status === 400 || error?.status === 401) {
+      throw new Error('This verification link is invalid or expired. Return to registration and request a new link.');
+    }
+    throw new Error('We could not confirm this account with Supabase. Check your connection and retry.');
+  }
+
+  if (!data.user.email_confirmed_at && !data.user.confirmed_at) {
+    throw new Error('Supabase has not confirmed this email address. Request a new verification link and try again.');
   }
 };

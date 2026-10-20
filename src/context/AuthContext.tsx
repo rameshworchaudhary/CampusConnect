@@ -82,14 +82,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     if (isSupabaseConfigured) {
       const { data: authListener } = supabase.auth.onAuthStateChange(
-        async (event, session) => {
+        (event, session) => {
           if (!mounted) return;
           if (session) {
             setToken(session.access_token);
-            const refreshed = await getCurrentUser();
-            if (mounted && refreshed) {
-              setUser(refreshed);
-            }
+            // Do not await Supabase calls inside this callback: supabase-js
+            // may hold its auth lock until the callback returns.
+            window.setTimeout(() => {
+              if (!mounted) return;
+              void getCurrentUser()
+                .then((refreshed) => {
+                  if (mounted) {
+                    setUser(refreshed);
+                    if (!refreshed) setToken(null);
+                  }
+                })
+                .catch((err) => {
+                  console.error('Error refreshing user after auth change:', err);
+                });
+            }, 0);
           } else if (event === 'SIGNED_OUT') {
             if (mounted) {
               setToken(null);

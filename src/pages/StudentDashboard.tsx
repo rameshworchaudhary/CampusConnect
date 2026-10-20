@@ -12,9 +12,11 @@ import { getUserRegisteredEvents, cancelEventRegistration } from '../services/ev
 import { getMembershipsForUser, cancelMembershipRequest } from '../services/membershipService';
 import { getPublicAnnouncements, markAnnouncementAsRead } from '../services/announcementService';
 import { updateProfile, changePassword } from '../services/authService';
+import { STORAGE_BUCKETS } from '../services/storageService';
+import { StorageImage } from '../components/StorageImage';
 
 export const StudentDashboard: React.FC = () => {
-  const { user, isAuthenticated, loading: authLoading, refreshUser } = useAuth();
+  const { user, setUser, isAuthenticated, loading: authLoading } = useAuth();
   const navigate = useNavigate();
 
   const [stats, setStats] = useState({
@@ -28,6 +30,7 @@ export const StudentDashboard: React.FC = () => {
   const [announcements, setAnnouncements] = useState<AnnouncementItem[]>([]);
   const [memberships, setMemberships] = useState<Membership[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   // Settings & Profile Modals
@@ -69,6 +72,7 @@ export const StudentDashboard: React.FC = () => {
     if (!user) return;
     try {
       setLoading(true);
+      setLoadError(null);
       const [statsData, eventsData, annData, memData] = await Promise.all([
         getStudentStats(user.id),
         getUserRegisteredEvents(user.id),
@@ -82,6 +86,7 @@ export const StudentDashboard: React.FC = () => {
       setMemberships(memData);
     } catch (err: any) {
       console.warn('Dashboard data fetch error:', err);
+      setLoadError(err?.message || 'Could not load your dashboard. Check your connection and try again.');
     } finally {
       setLoading(false);
     }
@@ -130,17 +135,26 @@ export const StudentDashboard: React.FC = () => {
     if (!user) return;
     try {
       setProfileSaving(true);
-      await updateProfile(
+      const savedProfile = await updateProfile(
         user.id,
         {
           fullName: profileName.trim(),
-          studentId: profileStudentId.trim() || undefined,
-          department: profileDepartment.trim() || undefined,
-          avatarPath: profileAvatarPath,
+          studentId: profileStudentId.trim(),
+          department: profileDepartment.trim(),
+          avatarPath: profileAvatarPath || null,
         },
         { email: user.email, role: user.role }
       );
-      await refreshUser();
+      setUser({
+        ...user,
+        fullName: savedProfile.fullName,
+        studentId: savedProfile.studentId || undefined,
+        department: savedProfile.department || undefined,
+        avatarPath: savedProfile.avatarPath && !savedProfile.avatarPath.startsWith('http')
+          ? savedProfile.avatarPath
+          : undefined,
+        avatarUrl: profileAvatarUrl || undefined,
+      });
       setToastMessage('Profile updated successfully.');
       setShowProfileModal(false);
     } catch (err: any) {
@@ -171,11 +185,17 @@ export const StudentDashboard: React.FC = () => {
   };
 
   return (
-    <div className="bg-surface font-body-md text-on-surface antialiased flex flex-col min-h-screen">
+    <div className="bg-app font-body-md text-on-surface antialiased flex flex-col min-h-screen">
       <Header subtitle="Student Workspace" unreadCount={stats.unreadAnnouncements} />
 
-      <main className="flex-1 w-full pt-20 pb-24 md:pb-12 bg-surface px-4 sm:px-6 lg:px-8">
+      <main className="flex-1 w-full pt-20 pb-24 md:pb-12 bg-app px-4 sm:px-6 lg:px-8">
         <div className="max-w-7xl mx-auto flex flex-col gap-6">
+          {loadError && !loading && (
+            <div role="alert" className="bg-surface-container-lowest p-4 rounded-xl border border-border-default flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <p className="text-xs text-on-surface-variant">Dashboard data could not be loaded: {loadError}</p>
+              <button type="button" onClick={fetchDashboardData} className="h-9 px-4 rounded-lg bg-accent text-on-accent text-xs font-semibold shrink-0">Retry</button>
+            </div>
+          )}
           {/* Welcome Header */}
           <div className="bg-surface-container-lowest p-5 sm:p-6 rounded-2xl border border-border-default shadow-sm flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div className="flex flex-col gap-1">
@@ -184,7 +204,7 @@ export const StudentDashboard: React.FC = () => {
                   Campus Portal
                 </span>
                 <span className="inline-flex items-center gap-1 text-xs bg-surface-container text-primary font-semibold px-2 py-0.5 rounded-full border border-border-default">
-                  <span className="w-1.5 h-1.5 rounded-full bg-primary"></span>
+                  <span className="w-1.5 h-1.5 rounded-full bg-accent"></span>
                   Verified Student
                 </span>
               </div>
@@ -210,7 +230,7 @@ export const StudentDashboard: React.FC = () => {
               </button>
               <Link
                 to="/clubs"
-                className="h-10 px-4 bg-primary text-on-primary text-xs sm:text-sm font-semibold rounded-xl flex items-center gap-2 hover:opacity-90 shadow-sm transition-opacity"
+                className="h-10 px-4 bg-accent text-on-accent text-xs sm:text-sm font-semibold rounded-xl flex items-center gap-2 hover:opacity-90 shadow-sm transition-opacity"
               >
                 <span className="material-symbols-outlined text-[18px]">groups</span>
                 <span>Browse Clubs</span>
@@ -329,7 +349,7 @@ export const StudentDashboard: React.FC = () => {
                             <h3 className="font-semibold text-on-surface text-sm sm:text-base truncate">
                               {evt.title}
                             </h3>
-                            <span className="bg-primary text-on-primary text-[10px] uppercase font-semibold px-2 py-0.5 rounded-full">
+                            <span className="bg-accent text-on-accent text-[10px] uppercase font-semibold px-2 py-0.5 rounded-full">
                               Confirmed
                             </span>
                           </div>
@@ -402,7 +422,7 @@ export const StudentDashboard: React.FC = () => {
                             <span
                               className={`text-[10px] uppercase font-semibold px-2 py-0.5 rounded-full border ${
                                 m.status === 'APPROVED'
-                                  ? 'bg-primary text-on-primary border-primary'
+                                  ? 'bg-accent text-on-accent border-accent'
                                   : m.status === 'PENDING'
                                   ? 'bg-surface-container text-primary border-border-default'
                                   : 'bg-surface-container-high text-on-surface border-border-default'
@@ -452,7 +472,7 @@ export const StudentDashboard: React.FC = () => {
                     </h2>
                   </div>
                   {stats.unreadAnnouncements > 0 && (
-                    <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-primary text-on-primary">
+                    <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-accent text-on-accent">
                       {stats.unreadAnnouncements} New
                     </span>
                   )}
@@ -474,12 +494,13 @@ export const StudentDashboard: React.FC = () => {
                             {ann.title}
                           </h4>
                           {!ann.isRead && (
-                            <span className="w-2 h-2 rounded-full bg-primary shrink-0 mt-1"></span>
+                            <span className="w-2 h-2 rounded-full bg-accent shrink-0 mt-1"></span>
                           )}
                         </div>
                         <p className="text-xs text-on-surface-variant line-clamp-2 leading-relaxed">
                           {ann.content}
                         </p>
+                        {ann.imagePath && <StorageImage bucket={STORAGE_BUCKETS.announcementImages} path={ann.imagePath} alt="Announcement attachment" className="max-h-36 w-full rounded-lg object-cover" />}
                         <div className="flex items-center justify-between pt-1 border-t border-border-default/50 text-[11px] text-on-surface-variant">
                           <span>{ann.postedByName}</span>
                           {!ann.isRead ? (
@@ -586,10 +607,10 @@ export const StudentDashboard: React.FC = () => {
 
           <div className="flex flex-col gap-1 pt-1">
             <ImageUploader
-              bucket="avatars"
+              bucket={STORAGE_BUCKETS.avatars}
               folderId={user?.id}
               label="Profile Picture (Avatar)"
-              currentImageUrl={profileAvatarUrl}
+              currentImageUrl={profileAvatarPath || profileAvatarUrl}
               onImageUploaded={(url, path) => { setProfileAvatarUrl(url); setProfileAvatarPath(path); }}
               onImageRemoved={() => { setProfileAvatarUrl(''); setProfileAvatarPath(''); }}
               aspectRatio="square"
@@ -608,7 +629,7 @@ export const StudentDashboard: React.FC = () => {
             <button
               type="submit"
               disabled={profileSaving}
-              className="h-9 px-4 rounded-lg bg-primary text-on-primary text-xs font-semibold shadow-sm hover:opacity-90 disabled:opacity-50"
+              className="h-9 px-4 rounded-lg bg-accent text-on-accent text-xs font-semibold shadow-sm hover:opacity-90 disabled:opacity-50"
             >
               {profileSaving ? 'Saving...' : 'Save Profile'}
             </button>
@@ -672,7 +693,7 @@ export const StudentDashboard: React.FC = () => {
             </button>
             <button
               type="submit"
-              className="h-9 px-4 rounded-lg bg-primary text-on-primary text-xs font-semibold shadow-sm hover:opacity-90"
+              className="h-9 px-4 rounded-lg bg-accent text-on-accent text-xs font-semibold shadow-sm hover:opacity-90"
             >
               Update Password
             </button>

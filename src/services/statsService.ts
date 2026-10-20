@@ -1,16 +1,18 @@
 import { supabase, isSupabaseConfigured, getLocalDb } from '../lib/supabase';
 import { PlatformStats } from '../types';
 
+const readCount = (result: { count: number | null; error: { message: string } | null }, label: string): number => {
+  if (result.error) throw new Error(`Could not load ${label}: ${result.error.message}`);
+  return result.count ?? 0;
+};
+
+const throwQueryError = (error: { message: string } | null, label: string): void => {
+  if (error) throw new Error(`Could not load ${label}: ${error.message}`);
+};
+
 export const getPlatformStats = async (): Promise<PlatformStats> => {
   if (isSupabaseConfigured) {
-    const [
-      { count: totalUsers },
-      { count: totalStudents },
-      { count: totalClubs },
-      { count: publishedEvents },
-      { count: totalRegistrations },
-      { count: pendingRequests },
-    ] = await Promise.all([
+    const results = await Promise.all([
       supabase.from('profiles').select('*', { count: 'exact', head: true }),
       supabase.from('profiles').select('*', { count: 'exact', head: true }).eq('role', 'student'),
       supabase.from('clubs').select('*', { count: 'exact', head: true }).eq('status', 'approved'),
@@ -19,13 +21,18 @@ export const getPlatformStats = async (): Promise<PlatformStats> => {
       supabase.from('club_memberships').select('*', { count: 'exact', head: true }).eq('status', 'PENDING'),
     ]);
 
+    const labels = ['users', 'students', 'clubs', 'published events', 'event registrations', 'pending club requests'];
+    results.forEach((result, index) => throwQueryError(result.error, labels[index]));
+    const [totalUsers, totalStudents, totalClubs, publishedEvents, totalRegistrations, pendingRequests] =
+      results.map((result, index) => readCount(result, labels[index]));
+
     return {
-      totalUsers: totalUsers || 0,
-      totalStudents: totalStudents || 0,
-      totalClubs: totalClubs || 0,
-      publishedEvents: publishedEvents || 0,
-      totalRegistrations: totalRegistrations || 0,
-      pendingRequests: pendingRequests || 0,
+      totalUsers,
+      totalStudents,
+      totalClubs,
+      publishedEvents,
+      totalRegistrations,
+      pendingRequests,
     };
   }
 
@@ -49,11 +56,7 @@ export const getPlatformStats = async (): Promise<PlatformStats> => {
 
 export const getStudentStats = async (userId: string) => {
   if (isSupabaseConfigured) {
-    const [
-      { count: enrolledClubs },
-      { count: pendingClubRequests },
-      { count: registeredEvents },
-    ] = await Promise.all([
+    const [enrolledResult, pendingResult, registrationsResult] = await Promise.all([
       supabase
         .from('club_memberships')
         .select('*', { count: 'exact', head: true })
@@ -70,24 +73,33 @@ export const getStudentStats = async (userId: string) => {
         .eq('user_id', userId)
         .eq('status', 'REGISTERED'),
     ]);
+    const enrolledClubs = readCount(enrolledResult, 'approved memberships');
+    const pendingClubRequests = readCount(pendingResult, 'pending memberships');
+    const registeredEvents = readCount(registrationsResult, 'event registrations');
 
-    // Unread announcements: active announcements count minus reads count
-    const { count: totalActiveAnnouncements } = await supabase
+    const { data: activeAnnouncements, error: announcementsError } = await supabase
       .from('announcements')
-      .select('*', { count: 'exact', head: true })
+      .select('id')
       .eq('published', true);
+    throwQueryError(announcementsError, 'published announcements');
 
-    const { count: readAnnouncements } = await supabase
-      .from('user_announcement_reads')
-      .select('*', { count: 'exact', head: true })
-      .eq('user_id', userId);
+    const activeAnnouncementIds = (activeAnnouncements || []).map((announcement) => announcement.id);
+    let readAnnouncements = 0;
+    if (activeAnnouncementIds.length > 0) {
+      const readResult = await supabase
+        .from('user_announcement_reads')
+        .select('announcement_id', { count: 'exact', head: true })
+        .eq('user_id', userId)
+        .in('announcement_id', activeAnnouncementIds);
+      readAnnouncements = readCount(readResult, 'announcement reads');
+    }
 
-    const unread = Math.max(0, (totalActiveAnnouncements || 0) - (readAnnouncements || 0));
+    const unread = Math.max(0, activeAnnouncementIds.length - readAnnouncements);
 
     return {
-      enrolledClubs: enrolledClubs || 0,
-      pendingClubRequests: pendingClubRequests || 0,
-      registeredEvents: registeredEvents || 0,
+      enrolledClubs,
+      pendingClubRequests,
+      registeredEvents,
       unreadAnnouncements: unread,
     };
   }
@@ -119,11 +131,7 @@ export const getStudentStats = async (userId: string) => {
 
 export const getClubAdminStats = async (clubId: string) => {
   if (isSupabaseConfigured) {
-    const [
-      { count: totalMembers },
-      { count: pendingRequests },
-      { count: totalEvents },
-    ] = await Promise.all([
+    const [membersResult, pendingResult, eventsResult, upcomingEventsResult] = await Promise.all([
       supabase
         .from('club_memberships')
         .select('*', { count: 'exact', head: true })
@@ -138,13 +146,22 @@ export const getClubAdminStats = async (clubId: string) => {
         .from('events')
         .select('*', { count: 'exact', head: true })
         .eq('club_id', clubId),
+      supabase
+        .from('events')
+        .select('*', { count: 'exact', head: true })
+        .eq('club_id', clubId)
+        .gt('starts_at', new Date().toISOString()),
     ]);
+    const totalMembers = readCount(membersResult, 'approved members');
+    const pendingRequests = readCount(pendingResult, 'pending membership requests');
+    const totalEvents = readCount(eventsResult, 'club events');
+    const upcomingEvents = readCount(upcomingEventsResult, 'upcoming club events');
 
     return {
       totalMembers: totalMembers || 0,
       pendingRequests: pendingRequests || 0,
       totalEvents: totalEvents || 0,
-      upcomingEvents: totalEvents || 0,
+      upcomingEvents,
     };
   }
 
@@ -155,12 +172,17 @@ export const getClubAdminStats = async (clubId: string) => {
   const pendingRequests = (db.club_memberships || []).filter(
     (m) => m.clubId === clubId && m.status === 'PENDING'
   ).length;
-  const totalEvents = (db.events || []).filter((e) => e.clubId === clubId).length;
+  const clubEvents = (db.events || []).filter((e) => e.clubId === clubId);
+  const totalEvents = clubEvents.length;
+  const upcomingEvents = clubEvents.filter((event) => {
+    const timestamp = Date.parse(event.eventDate);
+    return Number.isFinite(timestamp) && timestamp > Date.now();
+  }).length;
 
   return {
     totalMembers,
     pendingRequests,
     totalEvents,
-    upcomingEvents: totalEvents,
+    upcomingEvents,
   };
 };

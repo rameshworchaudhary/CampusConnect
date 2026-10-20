@@ -4,9 +4,19 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --color-app-background: #F4F5F0;
+  --color-primary: #111111;
+  --color-accent: #A8D66D;
+  --color-surface: #FFFFFF;
+  --color-secondary-text: #5C6258;
+  --color-border: #DDE2D7;
+  --color-hover: #E9ECE4;
+}
+
 @layer base {
   * {
-    border-color: #e5e5e5;
+    border-color: var(--color-border);
   }
 
   ::selection {
@@ -19,8 +29,8 @@
     margin: 0;
     padding: 0;
     min-height: 100%;
-    background-color: #ffffff;
-    color: #000000;
+    background-color: var(--color-app-background);
+    color: var(--color-primary);
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
@@ -31,7 +41,12 @@
 
   /* Ensure text defaults strictly to black and white hierarchy */
   h1, h2, h3, h4, h5, h6 {
-    color: #000000;
+    color: var(--color-primary);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-primary) !important;
+    outline-offset: 2px;
   }
 
   .pb-safe {
@@ -53,12 +68,12 @@
   height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: #ffffff;
+  background: var(--color-surface);
 }
 ::-webkit-scrollbar-thumb {
-  background: #d4d4d4;
+  background: var(--color-border);
   border-radius: 4px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #737373;
+  background: var(--color-secondary-text);
 }

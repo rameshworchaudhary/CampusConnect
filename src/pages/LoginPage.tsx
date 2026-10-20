@@ -41,13 +41,13 @@ export const LoginPage: React.FC = () => {
   };
 
   return (
-    <div className="bg-surface font-body-md text-on-surface antialiased flex flex-col min-h-screen">
+    <div className="bg-app font-body-md text-on-surface antialiased flex flex-col min-h-screen">
       <Header subtitle="Sign In" />
 
-      <main className="flex-1 flex flex-col items-center justify-center pt-20 pb-24 md:pb-16 px-4">
+      <main className="flex-1 flex flex-col items-center justify-start md:justify-center pt-24 md:pt-20 pb-24 md:pb-16 px-4">
         <div className="w-full max-w-md bg-surface-container-lowest border border-border-default rounded-2xl p-space-lg shadow-sm flex flex-col gap-space-md">
           <div className="flex flex-col gap-1 text-center">
-            <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center text-on-primary mx-auto mb-1 shadow-sm">
+            <div className="w-10 h-10 rounded-xl bg-accent flex items-center justify-center text-on-accent mx-auto mb-1 shadow-sm">
               <span className="material-symbols-outlined text-[24px]">school</span>
             </div>
             <h1 className="font-headline-md text-on-surface font-bold tracking-tight">
@@ -105,7 +105,7 @@ export const LoginPage: React.FC = () => {
             <button
               type="submit"
               disabled={loading}
-              className="h-11 bg-primary text-on-primary font-label-md rounded-xl font-semibold hover:opacity-90 shadow-sm active:scale-[0.98] transition-all mt-2 disabled:opacity-50"
+              className="h-11 bg-accent text-on-accent font-label-md rounded-xl font-semibold hover:opacity-90 shadow-sm active:scale-[0.98] transition-all mt-2 disabled:opacity-50"
             >
               {loading ? 'Authenticating...' : 'Sign In'}
             </button>

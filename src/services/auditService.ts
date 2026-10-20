@@ -10,16 +10,11 @@ export const logAuditAction = async (entry: {
 }): Promise<void> => {
   try {
     if (isSupabaseConfigured) {
-      await supabase.from('audit_logs').insert([
-        {
-          action_type: entry.actionType,
-          actor_email: entry.actorEmail,
-          actor_role: entry.actorRole,
-          target_identifier: entry.targetIdentifier,
-          details: entry.details,
-          ip_address: 'browser-client',
-        },
-      ]);
+      // Client-supplied audit rows are not trustworthy. Never send the caller's
+      // actor/action fields to the audit table. Database-generated events cover
+      // profile governance today; proposal 008 drafts broader row-change
+      // coverage and must be reviewed/tested before it can be relied on.
+      return;
     } else {
       const db = getLocalDb();
       const newLog: AuditLogItem = {

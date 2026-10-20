@@ -1,8 +1,9 @@
-import React, { useState, useRef } from 'react';
-import { uploadImage, deleteImage, validateImageFile } from '../services/storageService';
+import React, { useState, useRef, useEffect } from 'react';
+import { uploadImage, validateImageFile, StorageBucket } from '../services/storageService';
+import { StorageImage } from './StorageImage';
 
 interface ImageUploaderProps {
-  bucket: 'club-logos' | 'event-posters' | 'avatars';
+  bucket: StorageBucket;
   label: string;
   currentImageUrl?: string;
   onImageUploaded: (url: string, path: string) => void;
@@ -23,11 +24,14 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({
   folderId,
 }) => {
   const [previewUrl, setPreviewUrl] = useState<string | null>(currentImageUrl || null);
-  const [uploadedPath, setUploadedPath] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    setPreviewUrl(currentImageUrl || null);
+  }, [currentImageUrl]);
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -43,10 +47,9 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({
 
     try {
       setLoading(true);
-      setProgress(10);
+      setProgress(0);
       const result = await uploadImage(bucket, file, (percent) => setProgress(percent), folderId);
-      setPreviewUrl(result.url);
-      setUploadedPath(result.path);
+      setPreviewUrl(result.path || null);
       onImageUploaded(result.url, result.path);
     } catch (err: any) {
       setError(err.message || 'Image upload failed. Please try again.');
@@ -58,15 +61,9 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({
   };
 
   const handleRemove = async () => {
-    if (uploadedPath) {
-      try {
-        await deleteImage(bucket, uploadedPath);
-      } catch (err) {
-        console.warn('Could not remove remote image:', err);
-      }
-    }
+    // Leave object cleanup to the row save/delete service. The currently shown
+    // object may already be referenced by a successfully saved row.
     setPreviewUrl(null);
-    setUploadedPath(null);
     setError(null);
     if (onImageRemoved) onImageRemoved();
     if (fileInputRef.current) fileInputRef.current.value = '';
@@ -85,11 +82,7 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({
               aspectRatio === 'square' ? 'max-w-[140px] h-32' : 'h-36 max-w-full'
             } rounded-lg overflow-hidden border border-border-default bg-surface flex items-center justify-center relative`}
           >
-            <img
-              src={previewUrl}
-              alt="Uploaded Preview"
-              className="w-full h-full object-cover"
-            />
+            <StorageImage bucket={bucket} path={previewUrl} alt="Uploaded Preview" className="w-full h-full object-cover" />
           </div>
 
           <div className="flex items-center gap-2 mt-3">
@@ -131,13 +124,13 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({
       {loading && (
         <div className="w-full flex flex-col gap-1 mt-1">
           <div className="flex justify-between text-[11px] text-on-surface-variant">
-            <span>Uploading...</span>
-            <span className="font-semibold">{progress}%</span>
+            <span role="status">Uploading image...</span>
+            {progress > 0 && <span className="font-semibold">{progress}%</span>}
           </div>
           <div className="w-full h-1.5 rounded-full bg-surface-container overflow-hidden">
             <div
-              className="h-full bg-primary transition-all duration-150"
-              style={{ width: `${progress}%` }}
+              style={progress > 0 ? { width: `${progress}%` } : { width: '40%' }}
+              className={`h-full bg-accent transition-all duration-150 ${progress === 0 ? 'animate-pulse' : ''}`}
             ></div>
           </div>
         </div>

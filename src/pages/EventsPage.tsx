@@ -7,6 +7,8 @@ import { EventItem } from '../types';
 import { getPublicEvents, registerForEvent } from '../services/eventService';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
+import { StorageImage } from '../components/StorageImage';
+import { STORAGE_BUCKETS } from '../services/storageService';
 
 export const EventsPage: React.FC = () => {
   const { user, isAuthenticated } = useAuth();
@@ -14,6 +16,7 @@ export const EventsPage: React.FC = () => {
 
   const [events, setEvents] = useState<EventItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [search, setSearch] = useState('');
   const [selectedEvent, setSelectedEvent] = useState<EventItem | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -26,10 +29,12 @@ export const EventsPage: React.FC = () => {
   const fetchEvents = async () => {
     try {
       setLoading(true);
+      setLoadError(false);
       const data = await getPublicEvents(user?.id);
       setEvents(data);
     } catch (err: any) {
       console.warn('Could not load events:', err);
+      setLoadError(true);
     } finally {
       setLoading(false);
     }
@@ -63,10 +68,10 @@ export const EventsPage: React.FC = () => {
   });
 
   return (
-    <div className="bg-surface font-body-md text-on-surface antialiased flex flex-col min-h-screen">
+    <div className="bg-app font-body-md text-on-surface antialiased flex flex-col min-h-screen">
       <Header subtitle="Campus Events" />
 
-      <main className="flex-1 w-full pt-20 pb-24 md:pb-12 bg-surface px-4 sm:px-6 lg:px-8">
+      <main className="flex-1 w-full pt-20 pb-24 md:pb-12 bg-app px-4 sm:px-6 lg:px-8">
         <div className="max-w-7xl mx-auto flex flex-col gap-6">
           {/* Header Banner */}
           <div className="bg-surface-container-lowest p-5 sm:p-6 rounded-2xl border border-border-default shadow-sm flex flex-col gap-2">
@@ -100,6 +105,11 @@ export const EventsPage: React.FC = () => {
             <div className="py-16 text-center text-on-surface-variant text-sm">
               Loading calendar schedule...
             </div>
+          ) : loadError ? (
+            <div role="alert" className="bg-surface-container-lowest rounded-2xl p-8 shadow-sm border border-border-default flex flex-col items-center text-center gap-3">
+              <p className="text-sm text-on-surface-variant">Could not load events.</p>
+              <button type="button" onClick={() => void fetchEvents()} className="h-10 px-4 rounded-xl bg-accent text-on-accent text-sm font-semibold hover:opacity-90">Retry</button>
+            </div>
           ) : filteredEvents.length > 0 ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5 sm:gap-4">
               {filteredEvents.map((evt) => {
@@ -113,8 +123,9 @@ export const EventsPage: React.FC = () => {
                       {/* Event Poster if available */}
                       {evt.posterUrl && (
                         <div className="w-full h-36 rounded-xl overflow-hidden border border-border-default bg-surface-container mb-1">
-                          <img
-                            src={evt.posterUrl}
+                          <StorageImage
+                            bucket={STORAGE_BUCKETS.eventPosters}
+                            path={evt.posterPath}
                             alt={evt.title}
                             className="w-full h-full object-cover"
                           />
@@ -156,7 +167,7 @@ export const EventsPage: React.FC = () => {
                         </div>
                         <div className="w-full h-2 rounded-full bg-surface-container overflow-hidden">
                           <div
-                            className="h-full bg-primary rounded-full transition-all duration-300"
+                            className="h-full bg-accent rounded-full transition-all duration-300"
                             style={{ width: `${percent}%` }}
                           ></div>
                         </div>
@@ -179,7 +190,7 @@ export const EventsPage: React.FC = () => {
                           type="button"
                           disabled={actionLoading || evt.registeredCount >= evt.capacity || evt.isUserRegistered}
                           onClick={() => handleRegister(evt.id)}
-                          className="h-8 px-3.5 rounded-lg bg-primary text-on-primary text-xs font-semibold flex items-center gap-1 shadow-sm active:scale-95 transition-transform disabled:opacity-50"
+                          className="h-8 px-3.5 rounded-lg bg-accent text-on-accent text-xs font-semibold flex items-center gap-1 shadow-sm active:scale-95 transition-transform disabled:opacity-50"
                         >
                           <span>{evt.isUserRegistered ? 'Registered' : 'RSVP'}</span>
                           <span className="material-symbols-outlined text-[14px]">bookmark_add</span>
@@ -227,8 +238,9 @@ export const EventsPage: React.FC = () => {
 
             {selectedEvent.posterUrl && (
               <div className="w-full h-44 rounded-xl overflow-hidden border border-border-default bg-surface-container">
-                <img
-                  src={selectedEvent.posterUrl}
+                <StorageImage
+                  bucket={STORAGE_BUCKETS.eventPosters}
+                  path={selectedEvent.posterPath}
                   alt={selectedEvent.title}
                   className="w-full h-full object-cover"
                 />
@@ -282,7 +294,7 @@ export const EventsPage: React.FC = () => {
                 type="button"
                 disabled={actionLoading || selectedEvent.registeredCount >= selectedEvent.capacity || selectedEvent.isUserRegistered}
                 onClick={() => handleRegister(selectedEvent.id)}
-                className="h-9 px-4 rounded-lg bg-primary text-on-primary text-xs font-semibold flex items-center gap-1.5 shadow-sm active:scale-95 disabled:opacity-50"
+                className="h-9 px-4 rounded-lg bg-accent text-on-accent text-xs font-semibold flex items-center gap-1.5 shadow-sm active:scale-95 disabled:opacity-50"
               >
                 <span>
                   {selectedEvent.isUserRegistered

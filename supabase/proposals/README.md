@@ -1,0 +1,23 @@
+# CampusConnect database proposal drafts
+
+Every SQL file in this directory is a review draft, not an entry in `supabase/migrations/`. `000_staging_schema_baseline.sql` is specifically a data-free staging baseline, not a production baseline. Proposals 001-004 and staging-only corrections 005-007 have been applied only to the isolated staging project `xguansmirjarjuvelexq` on 2026-10-20. Proposal 008 is new and has not been applied anywhere. Nothing in this directory has been applied to production. None of these files should be treated as production-ready or moved into the incompatible historical migration runner chain without a separate review and deployment plan.
+
+## Required deployment order
+
+1. A fresh, empty staging database can use `000_staging_schema_baseline.sql`, then the current drafts 001, 002, 003, and 004 in that order. The baseline creates no app users, records, or Storage objects.
+2. `005_staging_policy_corrections.sql`, `006_staging_audit_acl_correction.sql`, and `007_staging_storage_path_scope_correction.sql` are one-off follow-ups for the already-provisioned staging database that received the earlier 001-004 versions. Do not apply them after the corrected 001-004 sequence on a fresh database: their preflights and exact policy names target the already-applied staging state. All three have already been applied to the current staging project.
+3. `008_database_generated_audit_coverage.sql` is an unapplied proposal. It depends on the corrected schema and ACL state from 001-004. Review and test it in a disposable staging fixture before considering it for any deployment.
+4. Create dedicated synthetic Auth accounts in staging and exercise positive and negative workflows. No role-based or browser/Auth/RLS integration tests have passed yet.
+5. Before production planning, capture and restore-test a recoverable database backup and separately preserve/restore private Storage object bytes. Independently review exact final SQL, rollback, and an isolated restore rehearsal. Production requires a separate, explicit approval.
+
+Do not run `supabase db push` against the current project. The repository's chronological migrations start with SQL that targets obsolete schema names and role labels. Never use migration repair, baseline marking, reset, or history rewriting as a shortcut.
+
+## Review limitations
+
+The baseline and earlier drafts 001-004 were applied to the isolated staging project. Read-only catalog review then found that the club-logo Storage policies resolved an unqualified `name` to `clubs.name`, the membership-cancel policy did not check the caller's Student role, and authenticated clients retained an audit-log INSERT policy and broad table ACL. These were proposal defects, not production changes.
+
+Corrected drafts 001-004 represent the current consolidated proposal for review. Staging-only follow-ups `005_staging_policy_corrections.sql`, `006_staging_audit_acl_correction.sql`, and `007_staging_storage_path_scope_correction.sql` were applied sequentially to staging `xguansmirjarjuvelexq`; 006 was needed after catalog review showed `authenticated` still had TRUNCATE despite RLS. Read-only catalog checks confirmed the four image buckets remained private, the public and authenticated club-logo predicates compare against `objects.name`, the membership DELETE policy checks active Student identity, audit INSERT is absent, the event marker constraint exists, and eligible image reads enforce entity-specific folder roots. A fresh staging query on 2026-10-20 confirmed zero Auth users, profiles, clubs, events, announcements, and Storage objects.
+
+These catalog checks confirm PostgreSQL accepted the previously applied staging SQL and expected metadata is present. They do not prove role-based behavior. No dedicated Auth accounts or inboxes are available, so registration, role-specific RLS decisions, capacity concurrency, image upload/signed URL behavior, and browser workflows remain unverified. Proposal 008 is not yet part of the staging schema and no regular application-row audit coverage is currently verified.
+
+The local machine has no PostgreSQL client/server, Supabase CLI, Docker, or SQL parser. Staging application of proposals 000-007 confirms PostgreSQL accepted those statements; row-level behavior still requires dedicated-account integration testing. Parent-table SELECT and Storage-object SELECT policies must be tested together because Storage predicates query parent records under caller RLS. The available Supabase connector has no Auth user provisioning or Auth settings tool, and current Auth configuration could not be read through it.

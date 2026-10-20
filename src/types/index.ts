@@ -26,7 +26,8 @@ export interface Club {
   facultyAdvisor?: string;
   contactEmail?: string;
   contactPhone?: string;
-  logoUrl?: string;
+  logoUrl?: string | null;
+  logoPath?: string;
   approvalStatus: 'PENDING' | 'APPROVED' | 'REJECTED';
   isPublished: boolean;
   assignedAdminId?: string;
@@ -59,7 +60,8 @@ export interface EventItem {
   eventDate: string;
   location: string;
   eventLink?: string;
-  posterUrl?: string;
+  posterUrl?: string | null;
+  posterPath?: string;
   capacity: number;
   registeredCount: number;
   isPublished: boolean;
@@ -78,6 +80,8 @@ export interface AnnouncementItem {
   isActive: boolean;
   isRead?: boolean;
   createdAt: string;
+  imageUrl?: string;
+  imagePath?: string;
 }
 
 export interface AuditLogItem {
