@@ -268,7 +268,7 @@ export const LandingPage: React.FC = () => {
                     <h3 className="font-bold text-on-surface line-clamp-2">{bulletin.title}</h3>
                     <p className="text-sm text-on-surface-variant line-clamp-3">{bulletin.content}</p>
                     <p className="mt-1 text-xs font-medium text-on-surface-variant">
-                      {bulletin.clubName || bulletin.postedByName || 'CampusConnect'}
+                      {bulletin.clubName || 'CampusConnect'}
                     </p>
                   </div>
                 </article>
