@@ -6,8 +6,9 @@ import { StorageImage } from '../components/StorageImage';
 import { useAuth } from '../context/AuthContext';
 import { getPublicClubs } from '../services/clubService';
 import { getPublicEvents } from '../services/eventService';
+import { getPublicAnnouncements } from '../services/announcementService';
 import { STORAGE_BUCKETS } from '../services/storageService';
-import { Club, EventItem } from '../types';
+import { AnnouncementItem, Club, EventItem } from '../types';
 
 const featureCards = [
   {
@@ -65,10 +66,13 @@ export const LandingPage: React.FC = () => {
   const navigate = useNavigate();
   const [clubs, setClubs] = React.useState<Club[]>([]);
   const [events, setEvents] = React.useState<EventItem[]>([]);
+  const [bulletins, setBulletins] = React.useState<AnnouncementItem[]>([]);
   const [clubsLoading, setClubsLoading] = React.useState(true);
   const [eventsLoading, setEventsLoading] = React.useState(true);
+  const [bulletinsLoading, setBulletinsLoading] = React.useState(true);
   const [clubsError, setClubsError] = React.useState('');
   const [eventsError, setEventsError] = React.useState('');
+  const [bulletinsError, setBulletinsError] = React.useState('');
 
   const loadClubs = React.useCallback(async () => {
     setClubsLoading(true);
@@ -94,10 +98,23 @@ export const LandingPage: React.FC = () => {
     }
   }, [user?.id]);
 
+  const loadBulletins = React.useCallback(async () => {
+    setBulletinsLoading(true);
+    setBulletinsError('');
+    try {
+      setBulletins(await getPublicAnnouncements());
+    } catch (error) {
+      setBulletinsError(error instanceof Error ? error.message : 'Bulletins could not be loaded.');
+    } finally {
+      setBulletinsLoading(false);
+    }
+  }, []);
+
   React.useEffect(() => {
     void loadClubs();
     void loadEvents();
-  }, [loadClubs, loadEvents]);
+    void loadBulletins();
+  }, [loadClubs, loadEvents, loadBulletins]);
 
   const handlePrimaryAction = () => {
     if (isAuthenticated) {
@@ -214,6 +231,45 @@ export const LandingPage: React.FC = () => {
                     <h3 className="truncate font-bold text-on-surface">{club.name}</h3>
                     <p className="text-sm text-on-surface-variant">{club.category}</p>
                     <Link to="/clubs" className="mt-2 inline-block text-sm font-semibold text-primary underline underline-offset-4">Explore club</Link>
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
+        </section>
+
+        <section aria-labelledby="public-bulletins-heading" className="flex flex-col gap-4">
+          <div className="flex items-end justify-between gap-3">
+            <div>
+              <span className="font-label-caps text-label-caps text-primary uppercase font-bold text-[11px]">Campus updates</span>
+              <h2 id="public-bulletins-heading" className="text-lg sm:text-xl md:text-2xl font-bold text-on-surface mt-1">Published bulletins</h2>
+            </div>
+          </div>
+          {bulletinsLoading ? (
+            <p role="status" className="rounded-xl border border-border-default bg-surface p-4 text-sm text-on-surface-variant">Loading published bulletins…</p>
+          ) : bulletinsError ? (
+            <div role="alert" className="flex flex-col items-start gap-2 rounded-xl border border-border-default bg-surface p-4 text-sm text-on-surface-variant">
+              <span>Bulletins could not be loaded.</span>
+              <button type="button" onClick={() => void loadBulletins()} className="min-h-10 rounded-lg bg-accent px-4 font-semibold text-on-accent">Retry bulletins</button>
+            </div>
+          ) : bulletins.length === 0 ? (
+            <p className="rounded-xl border border-border-default bg-surface p-4 text-sm text-on-surface-variant">There are no published bulletins to show right now. Check back later for campus updates.</p>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              {bulletins.slice(0, 3).map((bulletin) => (
+                <article key={bulletin.id} className="overflow-hidden rounded-xl border border-border-default bg-surface shadow-sm">
+                  {bulletin.imagePath && (
+                    <StorageImage bucket={STORAGE_BUCKETS.announcementImages} path={bulletin.imagePath} alt={`${bulletin.title} bulletin`} className="h-36 w-full object-cover" />
+                  )}
+                  <div className="flex flex-col gap-2 p-4">
+                    <span className="text-xs font-semibold text-on-surface-variant">
+                      {new Date(bulletin.createdAt).toLocaleDateString()}
+                    </span>
+                    <h3 className="font-bold text-on-surface line-clamp-2">{bulletin.title}</h3>
+                    <p className="text-sm text-on-surface-variant line-clamp-3">{bulletin.content}</p>
+                    <p className="mt-1 text-xs font-medium text-on-surface-variant">
+                      {bulletin.clubName || 'CampusConnect'}
+                    </p>
                   </div>
                 </article>
               ))}

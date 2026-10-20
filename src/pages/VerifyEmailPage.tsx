@@ -18,7 +18,9 @@ const removeAuthCallbackFromAddressBar = (callbackUrl: string) => {
 };
 
 export const VerifyEmailPage: React.FC = () => {
-  const callbackUrlRef = useRef<string>('');
+  // Supabase may consume callback tokens while restoring its session in an
+  // effect. Capture the original URL during render before that can happen.
+  const callbackUrlRef = useRef(typeof window === 'undefined' ? '' : window.location.href);
   const [loading, setLoading] = useState(true);
   const [verified, setVerified] = useState(false);
   const [message, setMessage] = useState('');
@@ -39,7 +41,6 @@ export const VerifyEmailPage: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    callbackUrlRef.current = window.location.href;
     removeAuthCallbackFromAddressBar(callbackUrlRef.current);
     void verify();
   }, [verify]);
