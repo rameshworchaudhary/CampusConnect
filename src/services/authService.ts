@@ -2,6 +2,7 @@ import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { Role, User } from '../types';
 import { logAuditAction } from './auditService';
 import { getStorageImageUrl, getStorageObjectPath, STORAGE_BUCKETS, deleteReplacedImage } from './storageService';
+import { getAuthRedirectUrl } from '../lib/authUrls';
 
 export const normalizeProfileRole = (value: string): Role => {
   switch (value.toLowerCase()) {
@@ -42,7 +43,7 @@ export const signUp = async (params: {
       email: params.email,
       password: params.password,
       options: {
-        emailRedirectTo: `${window.location.origin}/verify-email`,
+        emailRedirectTo: getAuthRedirectUrl('/verify-email'),
         data: {
           full_name: params.fullName,
           student_id: params.studentId,
@@ -296,7 +297,7 @@ export const changePassword = async (newPassword: string): Promise<void> => {
 export const resetPasswordForEmail = async (email: string): Promise<void> => {
   if (!isSupabaseConfigured) throw new Error('Supabase is not configured.');
   {
-    const redirectUrl = `${window.location.origin}/reset-password`;
+    const redirectUrl = getAuthRedirectUrl('/reset-password');
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
       redirectTo: redirectUrl,
     });
