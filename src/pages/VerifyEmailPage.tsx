@@ -3,6 +3,17 @@ import { Link } from 'react-router-dom';
 import { Header } from '../components/Header';
 import { BottomNav } from '../components/BottomNav';
 import { verifySignupEmailCallback } from '../services/authService';
+import { initialAuthCallbackUrl } from '../lib/supabase';
+
+const getSignupCallbackUrl = () => {
+  if (typeof window === 'undefined') return '';
+  try {
+    const initialUrl = new URL(initialAuthCallbackUrl);
+    return initialUrl.pathname === '/verify-email' ? initialUrl.href : window.location.href;
+  } catch {
+    return window.location.href;
+  }
+};
 
 const removeAuthCallbackFromAddressBar = (callbackUrl: string) => {
   try {
@@ -18,9 +29,7 @@ const removeAuthCallbackFromAddressBar = (callbackUrl: string) => {
 };
 
 export const VerifyEmailPage: React.FC = () => {
-  // Supabase may consume callback tokens while restoring its session in an
-  // effect. Capture the original URL during render before that can happen.
-  const callbackUrlRef = useRef(typeof window === 'undefined' ? '' : window.location.href);
+  const callbackUrlRef = useRef(getSignupCallbackUrl());
   const [loading, setLoading] = useState(true);
   const [verified, setVerified] = useState(false);
   const [message, setMessage] = useState('');
