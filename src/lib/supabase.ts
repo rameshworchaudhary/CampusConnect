@@ -1,5 +1,9 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
+// Keep the initial callback URL before Supabase client initialization can
+// consume auth tokens and remove them from the browser address bar.
+export const initialAuthCallbackUrl = typeof window === 'undefined' ? '' : window.location.href;
+
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL?.trim();
 const supabaseAnonKey = (
   import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ||

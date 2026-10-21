@@ -3,6 +3,17 @@ import { Link } from 'react-router-dom';
 import { Header } from '../components/Header';
 import { BottomNav } from '../components/BottomNav';
 import { verifySignupEmailCallback } from '../services/authService';
+import { initialAuthCallbackUrl } from '../lib/supabase';
+
+const getSignupCallbackUrl = () => {
+  if (typeof window === 'undefined') return '';
+  try {
+    const initialUrl = new URL(initialAuthCallbackUrl);
+    return initialUrl.pathname === '/verify-email' ? initialUrl.href : window.location.href;
+  } catch {
+    return window.location.href;
+  }
+};
 
 const removeAuthCallbackFromAddressBar = (callbackUrl: string) => {
   try {
@@ -18,9 +29,7 @@ const removeAuthCallbackFromAddressBar = (callbackUrl: string) => {
 };
 
 export const VerifyEmailPage: React.FC = () => {
-  // Supabase may consume callback tokens while restoring its session in an
-  // effect. Capture the original URL during render before that can happen.
-  const callbackUrlRef = useRef(typeof window === 'undefined' ? '' : window.location.href);
+  const callbackUrlRef = useRef(getSignupCallbackUrl());
   const [loading, setLoading] = useState(true);
   const [verified, setVerified] = useState(false);
   const [message, setMessage] = useState('');
@@ -61,10 +70,10 @@ export const VerifyEmailPage: React.FC = () => {
               <div className="w-12 h-12 rounded-xl bg-surface-container flex items-center justify-center mx-auto text-primary">
                 <span className="material-symbols-outlined text-[28px]">verified</span>
               </div>
-              <h1 className="font-headline-md text-on-surface font-bold tracking-tight">Email Verified</h1>
+              <h1 className="font-headline-md text-on-surface font-bold tracking-tight">Email Verification Complete</h1>
               <p className="font-body-md text-on-surface-variant text-xs">{message}</p>
               <Link to="/login" className="h-10 bg-accent text-on-accent font-label-md rounded-xl font-semibold flex items-center justify-center hover:opacity-90 shadow-sm transition-opacity mt-2 text-xs">
-                Proceed to Sign In
+                Go back to sign in
               </Link>
             </div>
           ) : (
