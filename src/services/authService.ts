@@ -328,6 +328,21 @@ export const verifySignupEmailCallback = async (callbackUrl: string): Promise<vo
     }
     throw new Error('Supabase could not complete this verification link. Return to registration and request a new link.');
   }
+
+  // With Supabase PKCE links, the client may exchange `code` and clean the URL
+  // before this page verifies it. In that case, confirm the resulting session
+  // with Auth and require an email-confirmed user before showing success.
+  if (callback.searchParams.has('code')) {
+    const { data, error } = await supabase.auth.getUser();
+    if (error || !data.user) {
+      throw new Error('Supabase could not complete this verification link. Return to registration and request a new link.');
+    }
+    if (!data.user.email_confirmed_at && !data.user.confirmed_at) {
+      throw new Error('Supabase has not confirmed this email address. Request a new verification link and try again.');
+    }
+    return;
+  }
+
   if (callbackTypes.length === 0 || callbackTypes.some((type) => type !== 'signup')) {
     throw new Error('This is not a valid signup verification link. Return to registration and request a new link.');
   }

@@ -70,10 +70,10 @@ export const VerifyEmailPage: React.FC = () => {
               <div className="w-12 h-12 rounded-xl bg-surface-container flex items-center justify-center mx-auto text-primary">
                 <span className="material-symbols-outlined text-[28px]">verified</span>
               </div>
-              <h1 className="font-headline-md text-on-surface font-bold tracking-tight">Email Verified</h1>
+              <h1 className="font-headline-md text-on-surface font-bold tracking-tight">Email Verification Complete</h1>
               <p className="font-body-md text-on-surface-variant text-xs">{message}</p>
               <Link to="/login" className="h-10 bg-accent text-on-accent font-label-md rounded-xl font-semibold flex items-center justify-center hover:opacity-90 shadow-sm transition-opacity mt-2 text-xs">
-                Proceed to Sign In
+                Go back to sign in
               </Link>
             </div>
           ) : (
