@@ -408,7 +408,7 @@ export const SuperAdminDashboard: React.FC = () => {
                   Super Administrator
                 </span>
               </div>
-              <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-on-surface tracking-tight">
+              <h1 className="text-3xl sm:text-4xl font-semibold text-on-surface tracking-tight leading-tight">
                 Platform Governance Portal
               </h1>
               <p className="text-xs sm:text-sm text-on-surface-variant">

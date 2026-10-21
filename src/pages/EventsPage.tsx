@@ -78,7 +78,7 @@ export const EventsPage: React.FC = () => {
             <span className="font-label-caps text-label-caps text-primary uppercase text-[11px] font-bold">
               Campus Calendar
             </span>
-            <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-on-surface tracking-tight">
+            <h1 className="text-3xl sm:text-4xl font-semibold text-on-surface tracking-tight leading-tight">
               Upcoming Events &amp; Assemblies
             </h1>
             <p className="text-xs sm:text-sm text-on-surface-variant max-w-3xl">

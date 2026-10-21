@@ -208,7 +208,7 @@ export const StudentDashboard: React.FC = () => {
                   Verified Student
                 </span>
               </div>
-              <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-on-surface tracking-tight">
+              <h1 className="text-3xl sm:text-4xl font-semibold text-on-surface tracking-tight leading-tight">
                 Welcome back, {user?.fullName || 'Student'}
               </h1>
               <p className="text-xs sm:text-sm text-on-surface-variant">

@@ -307,7 +307,7 @@ export const ClubAdminDashboard: React.FC = () => {
                       </span>
                     </div>
 
-                    <h1 className="text-xl sm:text-2xl font-bold text-on-surface tracking-tight truncate">
+                    <h1 className="text-2xl sm:text-3xl font-semibold text-on-surface tracking-tight truncate">
                       {club?.name || 'Assigned Student Organization'}
                     </h1>
 

@@ -5,13 +5,25 @@
 @tailwind utilities;
 
 :root {
-  --color-app-background: #F4F5F0;
-  --color-primary: #111111;
-  --color-accent: #A8D66D;
+  --color-sage: #829780;
+  --color-sage-deep: #526B55;
+  --color-sage-pale: #E0E8DF;
+  --color-app-background: #F5F1E8;
+  --color-cream-soft: #FBF9F4;
+  --color-charcoal: #262B27;
+  --color-primary: var(--color-sage-deep);
+  --color-accent: var(--color-sage-deep);
   --color-surface: #FFFFFF;
-  --color-secondary-text: #5C6258;
-  --color-border: #DDE2D7;
-  --color-hover: #E9ECE4;
+  --color-secondary-text: #626960;
+  --color-border: #DDE1D8;
+  --color-hover: var(--color-sage-pale);
+  --color-success: #3F7652;
+  --color-warning: #9A6B2F;
+  --color-error: #A84444;
+  --font-heading: "Times New Roman", Times, serif;
+  --font-body: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --radius-card: 16px;
+  --radius-control: 10px;
 }
 
 @layer base {
@@ -20,7 +32,7 @@
   }
 
   ::selection {
-    background-color: #000000;
+    background-color: var(--color-sage-deep);
     color: #ffffff;
   }
 
@@ -31,7 +43,7 @@
     min-height: 100%;
     background-color: var(--color-app-background);
     color: var(--color-primary);
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-family: var(--font-body);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     -webkit-text-size-adjust: 100%;
@@ -39,14 +51,52 @@
     overflow-x: hidden;
   }
 
-  /* Ensure text defaults strictly to black and white hierarchy */
   h1, h2, h3, h4, h5, h6 {
-    color: var(--color-primary);
+    color: var(--color-charcoal);
+    font-family: var(--font-heading);
+    font-weight: 600;
+    letter-spacing: -0.015em;
   }
 
   :focus-visible {
-    outline: 2px solid var(--color-primary) !important;
+    outline: 2px solid var(--color-sage-deep) !important;
     outline-offset: 2px;
+  }
+
+  button, a, input, select, textarea {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  button:not(:disabled) {
+    cursor: pointer;
+  }
+
+  input:not([type="checkbox"]):not([type="radio"]),
+  select,
+  textarea {
+    border-radius: var(--radius-control);
+    transition: border-color 150ms ease, box-shadow 150ms ease, background-color 150ms ease;
+  }
+
+  input:focus, select:focus, textarea:focus {
+    border-color: var(--color-sage-deep) !important;
+    box-shadow: 0 0 0 3px rgb(82 107 85 / 14%);
+  }
+
+  input::placeholder, textarea::placeholder {
+    color: #7B827A;
+    opacity: 1;
+  }
+
+  table {
+    border-collapse: separate;
+    border-spacing: 0;
+  }
+
+  thead th {
+    background: var(--color-cream-soft);
+    color: var(--color-secondary-text);
+    font-weight: 600;
   }
 
   .pb-safe {
@@ -59,6 +109,18 @@
 
   .tabular-nums, .font-tabular-num {
     font-variant-numeric: tabular-nums;
+  }
+}
+
+@layer components {
+  .editorial-hero {
+    background:
+      radial-gradient(ellipse at 78% 18%, rgb(224 232 223 / 70%), transparent 36%),
+      linear-gradient(135deg, var(--color-cream-soft), #ffffff 72%);
+  }
+
+  .editorial-hero-art {
+    background: var(--color-sage-pale);
   }
 }
 
@@ -76,4 +138,13 @@
 }
 ::-webkit-scrollbar-thumb:hover {
   background: var(--color-secondary-text);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

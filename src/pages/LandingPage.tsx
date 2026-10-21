@@ -1,5 +1,5 @@
 import React from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { Header } from '../components/Header';
 import { BottomNav } from '../components/BottomNav';
 import { StorageImage } from '../components/StorageImage';
@@ -64,6 +64,7 @@ const steps = [
 export const LandingPage: React.FC = () => {
   const { user, isAuthenticated } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [clubs, setClubs] = React.useState<Club[]>([]);
   const [events, setEvents] = React.useState<EventItem[]>([]);
   const [bulletins, setBulletins] = React.useState<AnnouncementItem[]>([]);
@@ -116,6 +117,12 @@ export const LandingPage: React.FC = () => {
     void loadBulletins();
   }, [loadClubs, loadEvents, loadBulletins]);
 
+  React.useEffect(() => {
+    if (location.hash === '#public-bulletins') {
+      document.getElementById('public-bulletins')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, [location.hash]);
+
   const handlePrimaryAction = () => {
     if (isAuthenticated) {
       const route = user?.role === 'SUPER_ADMIN' ? '/admin' : user?.role === 'CLUB_ADMIN' ? '/club-admin' : '/student';
@@ -132,16 +139,16 @@ export const LandingPage: React.FC = () => {
       {/* Main Content */}
       <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 pt-20 sm:pt-24 pb-24 md:pb-16 flex flex-col gap-10 sm:gap-14">
         {/* Hero Section */}
-        <section className="flex flex-col lg:flex-row items-center gap-8 lg:gap-12 py-2 sm:py-6">
-          <div className="flex-1 flex flex-col gap-4 text-left">
+        <section className="editorial-hero flex flex-col lg:flex-row items-center gap-8 lg:gap-12 py-6 sm:py-9 lg:py-12 px-5 sm:px-8 lg:px-12 rounded-2xl border border-border-default shadow-sm">
+          <div className="flex-1 flex flex-col gap-5 text-left">
             <div className="inline-flex items-center gap-2 self-start px-3 py-1 rounded-full bg-surface-container border border-border-default text-[11px] font-semibold text-primary uppercase tracking-wider">
               <span className="w-1.5 h-1.5 rounded-full bg-accent"></span>
               <span>Campus clubs and events</span>
             </div>
-            <h1 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold text-on-surface tracking-tight leading-tight">
+            <h1 className="text-4xl sm:text-5xl lg:text-6xl xl:text-[68px] font-semibold text-on-surface tracking-tight leading-[1.04] max-w-3xl">
               Every campus club, one place.
             </h1>
-            <p className="text-xs sm:text-sm md:text-base text-on-surface-variant max-w-xl leading-relaxed">
+            <p className="text-sm sm:text-base md:text-lg text-on-surface-variant max-w-xl leading-relaxed">
               Discover official student organizations, register for memberships, RSVP to campus events, and manage club operations securely.
             </p>
 
@@ -149,20 +156,20 @@ export const LandingPage: React.FC = () => {
               <button
                 type="button"
                 onClick={handlePrimaryAction}
-                className="h-11 px-5 rounded-xl bg-accent text-on-accent text-xs sm:text-sm font-semibold shadow-sm hover:opacity-90 active:scale-95 transition-all"
+                className="min-h-11 px-5 rounded-xl bg-accent text-on-accent text-sm font-semibold shadow-sm hover:opacity-90 active:scale-[0.98] transition-all"
               >
                 {isAuthenticated ? 'Go to Workspace' : 'Join as Student'}
               </button>
               <Link
                 to="/clubs"
-                className="h-11 px-5 rounded-xl bg-surface-container text-on-surface text-xs sm:text-sm font-semibold border border-border-default hover:bg-surface-container-high transition-colors flex items-center justify-center"
+                className="min-h-11 px-5 rounded-xl bg-white/80 text-on-surface text-sm font-semibold border border-border-default hover:bg-white transition-colors flex items-center justify-center"
               >
                 Explore Clubs Directory
               </Link>
             </div>
           </div>
 
-          <div className="w-full lg:flex-1 max-w-md lg:max-w-none aspect-[3/2] rounded-2xl border border-border-default bg-surface-container-low overflow-hidden shadow-sm flex items-center justify-center relative">
+          <div className="editorial-hero-art w-full lg:flex-1 max-w-md lg:max-w-none aspect-[3/2] rounded-2xl border border-border-default overflow-hidden flex items-center justify-center relative p-2 sm:p-4">
             <img
               src="/campus-connect-hero.png"
               alt="CampusConnect illustration showing campus clubs and events"
@@ -238,7 +245,7 @@ export const LandingPage: React.FC = () => {
           )}
         </section>
 
-        <section aria-labelledby="public-bulletins-heading" className="flex flex-col gap-4">
+        <section id="public-bulletins" aria-labelledby="public-bulletins-heading" className="scroll-mt-24 flex flex-col gap-4">
           <div className="flex items-end justify-between gap-3">
             <div>
               <span className="font-label-caps text-label-caps text-primary uppercase font-bold text-[11px]">Campus updates</span>
@@ -328,11 +335,12 @@ export const LandingPage: React.FC = () => {
 
       {/* Footer */}
       <footer className="border-t border-border-default py-6 px-4 sm:px-6 lg:px-8 bg-surface">
-        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-on-surface-variant">
+        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3 text-sm text-on-surface-variant">
           <span>CampusConnect — Campus Organization &amp; Event Management</span>
           <div className="flex items-center gap-4">
             <Link to="/clubs" className="hover:text-primary">Clubs</Link>
             <Link to="/events" className="hover:text-primary">Events</Link>
+            <Link to="/#public-bulletins" className="hover:text-primary">Bulletins</Link>
             <Link to="/login" className="hover:text-primary">Sign In</Link>
           </div>
         </div>
