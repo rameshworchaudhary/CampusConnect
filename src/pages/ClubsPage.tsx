@@ -154,7 +154,7 @@ export const ClubsPage: React.FC = () => {
               <span className="font-label-caps text-label-caps text-primary uppercase font-bold text-[11px]">
                 Curated Directory
               </span>
-              <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-on-surface tracking-tight">
+              <h1 className="text-3xl sm:text-4xl font-semibold text-on-surface tracking-tight leading-tight">
                 Student Organizations &amp; Clubs
               </h1>
               <p className="text-xs sm:text-sm text-on-surface-variant max-w-2xl">
@@ -232,7 +232,7 @@ export const ClubsPage: React.FC = () => {
                       <div className="flex items-center gap-3 min-w-0">
                         {club.logoUrl ? (
                           <div className="w-12 h-12 rounded-xl border border-border-default overflow-hidden bg-surface-container shrink-0">
-                            <StorageImage bucket={STORAGE_BUCKETS.clubLogos} path={club.logoPath} alt={club.name} className="w-full h-full object-cover" />
+                            <StorageImage bucket={STORAGE_BUCKETS.clubLogos} path={club.logoPath} alt={club.name} className="w-full h-full object-contain" />
                           </div>
                         ) : (
                           <div className="w-12 h-12 rounded-xl bg-surface-container flex items-center justify-center text-primary shrink-0 border border-border-default">
@@ -349,7 +349,7 @@ export const ClubsPage: React.FC = () => {
 
             {selectedClub.logoUrl && (
               <div className="w-20 h-20 rounded-xl overflow-hidden border border-border-default mx-auto bg-surface-container">
-                <StorageImage bucket={STORAGE_BUCKETS.clubLogos} path={selectedClub.logoPath} alt={selectedClub.name} className="w-full h-full object-cover" />
+                <StorageImage bucket={STORAGE_BUCKETS.clubLogos} path={selectedClub.logoPath} alt={selectedClub.name} className="w-full h-full object-contain" />
               </div>
             )}
 

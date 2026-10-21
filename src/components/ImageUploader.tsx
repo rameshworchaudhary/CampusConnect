@@ -82,7 +82,7 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({
               aspectRatio === 'square' ? 'max-w-[140px] h-32' : 'h-36 max-w-full'
             } rounded-lg overflow-hidden border border-border-default bg-surface flex items-center justify-center relative`}
           >
-            <StorageImage bucket={bucket} path={previewUrl} alt="Uploaded Preview" className="w-full h-full object-cover" />
+            <StorageImage bucket={bucket} path={previewUrl} alt="Uploaded Preview" className="w-full h-full object-contain" />
           </div>
 
           <div className="flex items-center gap-2 mt-3">

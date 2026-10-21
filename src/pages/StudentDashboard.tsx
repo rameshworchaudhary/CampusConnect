@@ -208,7 +208,7 @@ export const StudentDashboard: React.FC = () => {
                   Verified Student
                 </span>
               </div>
-              <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-on-surface tracking-tight">
+              <h1 className="text-3xl sm:text-4xl font-semibold text-on-surface tracking-tight leading-tight">
                 Welcome back, {user?.fullName || 'Student'}
               </h1>
               <p className="text-xs sm:text-sm text-on-surface-variant">
@@ -500,7 +500,7 @@ export const StudentDashboard: React.FC = () => {
                         <p className="text-xs text-on-surface-variant line-clamp-2 leading-relaxed">
                           {ann.content}
                         </p>
-                        {ann.imagePath && <StorageImage bucket={STORAGE_BUCKETS.announcementImages} path={ann.imagePath} alt="Announcement attachment" className="max-h-36 w-full rounded-lg object-cover" />}
+                        {ann.imagePath && <StorageImage bucket={STORAGE_BUCKETS.announcementImages} path={ann.imagePath} alt="Announcement attachment" className="max-h-36 w-full rounded-lg object-contain" />}
                         <div className="flex items-center justify-between pt-1 border-t border-border-default/50 text-[11px] text-on-surface-variant">
                           <span>{ann.postedByName}</span>
                           {!ann.isRead ? (

@@ -408,7 +408,7 @@ export const SuperAdminDashboard: React.FC = () => {
                   Super Administrator
                 </span>
               </div>
-              <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-on-surface tracking-tight">
+              <h1 className="text-3xl sm:text-4xl font-semibold text-on-surface tracking-tight leading-tight">
                 Platform Governance Portal
               </h1>
               <p className="text-xs sm:text-sm text-on-surface-variant">
@@ -608,7 +608,7 @@ export const SuperAdminDashboard: React.FC = () => {
                           <div className="flex items-start gap-3 min-w-0">
                             {clubItem.logoUrl ? (
                               <div className="w-10 h-10 rounded-lg overflow-hidden border border-border-default shrink-0 bg-surface-container">
-                                <StorageImage bucket={STORAGE_BUCKETS.clubLogos} path={clubItem.logoPath} alt={clubItem.name} className="w-full h-full object-cover" />
+                                <StorageImage bucket={STORAGE_BUCKETS.clubLogos} path={clubItem.logoPath} alt={clubItem.name} className="w-full h-full object-contain" />
                               </div>
                             ) : (
                               <div className="w-10 h-10 rounded-lg bg-surface-container flex items-center justify-center text-primary font-bold shrink-0 border border-border-default text-xs">
@@ -902,7 +902,7 @@ export const SuperAdminDashboard: React.FC = () => {
                           <div className="flex items-center gap-2.5 min-w-0">
                             {clubItem.logoUrl ? (
                               <div className="w-10 h-10 rounded-lg overflow-hidden border border-border-default bg-surface-container shrink-0">
-                                <StorageImage bucket={STORAGE_BUCKETS.clubLogos} path={clubItem.logoPath} alt={clubItem.name} className="w-full h-full object-cover" />
+                                <StorageImage bucket={STORAGE_BUCKETS.clubLogos} path={clubItem.logoPath} alt={clubItem.name} className="w-full h-full object-contain" />
                               </div>
                             ) : (
                               <div className="w-10 h-10 rounded-lg bg-surface-container flex items-center justify-center text-primary font-bold shrink-0 border border-border-default text-xs">
@@ -1216,7 +1216,7 @@ export const SuperAdminDashboard: React.FC = () => {
                       <div className="flex flex-col gap-2">
                         {evt.posterUrl && (
                           <div className="w-full h-32 rounded-lg overflow-hidden border border-border-default bg-surface-container">
-                            <StorageImage bucket={STORAGE_BUCKETS.eventPosters} path={evt.posterPath} alt={evt.title} className="w-full h-full object-cover" />
+                            <StorageImage bucket={STORAGE_BUCKETS.eventPosters} path={evt.posterPath} alt={evt.title} className="w-full h-full object-contain" />
                           </div>
                         )}
                         <div className="flex items-start justify-between gap-2">
@@ -1298,7 +1298,7 @@ export const SuperAdminDashboard: React.FC = () => {
                           </span>
                         </div>
                         <p className="text-xs text-on-surface-variant leading-relaxed">{ann.content}</p>
-                        {ann.imagePath && <StorageImage bucket={STORAGE_BUCKETS.announcementImages} path={ann.imagePath} alt="Announcement attachment" className="max-h-36 w-full rounded-lg object-cover" />}
+                        {ann.imagePath && <StorageImage bucket={STORAGE_BUCKETS.announcementImages} path={ann.imagePath} alt="Announcement attachment" className="max-h-36 w-full rounded-lg object-contain" />}
                         <span className="text-[11px] text-on-surface-variant mt-1">
                           Posted by {ann.postedByName} {ann.clubName ? `(${ann.clubName})` : ''} on {new Date(ann.createdAt).toLocaleDateString()}
                         </span>

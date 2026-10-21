@@ -46,7 +46,9 @@ export const Header: React.FC<HeaderProps> = ({
             type="button"
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
             aria-label="Toggle Navigation Menu"
-            className="w-10 h-10 flex md:hidden items-center justify-center rounded-xl text-on-surface-variant hover:text-primary hover:bg-surface-container transition-colors shrink-0"
+            aria-expanded={mobileMenuOpen}
+            aria-controls={mobileMenuOpen ? 'campusconnect-mobile-menu' : undefined}
+            className="w-10 h-10 flex lg:hidden items-center justify-center rounded-xl text-on-surface-variant hover:text-primary hover:bg-surface-container transition-colors shrink-0"
           >
             <span className="material-symbols-outlined text-[24px]">
               {mobileMenuOpen ? 'close' : 'menu'}
@@ -68,7 +70,7 @@ export const Header: React.FC<HeaderProps> = ({
           </Link>
 
           {/* Desktop Navigation Links */}
-          <nav className="hidden md:flex items-center gap-1 pl-3 sm:pl-4 border-l border-border-default">
+          <nav aria-label="Main navigation" className="hidden lg:flex items-center gap-1 pl-3 sm:pl-4 border-l border-border-default">
             <NavLink
               to="/"
               end
@@ -105,6 +107,18 @@ export const Header: React.FC<HeaderProps> = ({
               }
             >
               Events
+            </NavLink>
+            <NavLink
+              to="/#public-bulletins"
+              className={() =>
+                `px-3 py-1.5 rounded-lg text-xs lg:text-sm font-medium transition-colors whitespace-nowrap ${
+                  location.pathname === '/' && location.hash === '#public-bulletins'
+                    ? 'bg-accent text-on-accent font-semibold'
+                    : 'text-on-surface-variant hover:text-primary hover:bg-surface-container-low'
+                }`
+              }
+            >
+              Bulletins
             </NavLink>
             {isAuthenticated && (
               <NavLink
@@ -247,8 +261,8 @@ export const Header: React.FC<HeaderProps> = ({
 
       {/* Mobile Drawer / Slide-Down Menu */}
       {mobileMenuOpen && (
-        <div className="md:hidden border-t border-border-default bg-surface/98 backdrop-blur-xl px-4 py-4 flex flex-col gap-3 shadow-lg animate-in slide-in-from-top-2 duration-150">
-          <div className="grid grid-cols-3 gap-2">
+        <div id="campusconnect-mobile-menu" className="lg:hidden border-t border-border-default bg-surface/98 backdrop-blur-xl px-4 py-4 flex flex-col gap-3 shadow-lg animate-in slide-in-from-top-2 duration-150">
+          <nav aria-label="Mobile navigation" className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             <Link
               to="/"
               className={`flex flex-col items-center justify-center py-2.5 px-2 rounded-xl text-xs font-medium border text-center transition-colors ${
@@ -284,7 +298,20 @@ export const Header: React.FC<HeaderProps> = ({
               <span className="material-symbols-outlined text-[20px] mb-0.5">calendar_today</span>
               Events
             </Link>
-          </div>
+
+            <Link
+              to="/#public-bulletins"
+              className={`flex flex-col items-center justify-center py-2.5 px-2 rounded-xl text-xs font-medium border text-center transition-colors ${
+                location.pathname === '/' && location.hash === '#public-bulletins'
+                  ? 'bg-accent text-on-accent border-accent font-semibold'
+                  : 'bg-surface-container-low text-on-surface border-border-default hover:bg-surface-container'
+              }`}
+              onClick={() => setMobileMenuOpen(false)}
+            >
+              <span className="material-symbols-outlined text-[20px] mb-0.5">campaign</span>
+              Bulletins
+            </Link>
+          </nav>
 
           {isAuthenticated && user ? (
             <div className="pt-2 border-t border-border-default flex flex-col gap-2">
