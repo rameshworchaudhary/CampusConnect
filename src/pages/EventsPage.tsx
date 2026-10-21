@@ -127,7 +127,7 @@ export const EventsPage: React.FC = () => {
                             bucket={STORAGE_BUCKETS.eventPosters}
                             path={evt.posterPath}
                             alt={evt.title}
-                            className="w-full h-full object-cover"
+                            className="w-full h-full object-contain"
                           />
                         </div>
                       )}
@@ -242,7 +242,7 @@ export const EventsPage: React.FC = () => {
                   bucket={STORAGE_BUCKETS.eventPosters}
                   path={selectedEvent.posterPath}
                   alt={selectedEvent.title}
-                  className="w-full h-full object-cover"
+                  className="w-full h-full object-contain"
                 />
               </div>
             )}

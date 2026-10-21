@@ -232,7 +232,7 @@ export const ClubsPage: React.FC = () => {
                       <div className="flex items-center gap-3 min-w-0">
                         {club.logoUrl ? (
                           <div className="w-12 h-12 rounded-xl border border-border-default overflow-hidden bg-surface-container shrink-0">
-                            <StorageImage bucket={STORAGE_BUCKETS.clubLogos} path={club.logoPath} alt={club.name} className="w-full h-full object-cover" />
+                            <StorageImage bucket={STORAGE_BUCKETS.clubLogos} path={club.logoPath} alt={club.name} className="w-full h-full object-contain" />
                           </div>
                         ) : (
                           <div className="w-12 h-12 rounded-xl bg-surface-container flex items-center justify-center text-primary shrink-0 border border-border-default">
@@ -349,7 +349,7 @@ export const ClubsPage: React.FC = () => {
 
             {selectedClub.logoUrl && (
               <div className="w-20 h-20 rounded-xl overflow-hidden border border-border-default mx-auto bg-surface-container">
-                <StorageImage bucket={STORAGE_BUCKETS.clubLogos} path={selectedClub.logoPath} alt={selectedClub.name} className="w-full h-full object-cover" />
+                <StorageImage bucket={STORAGE_BUCKETS.clubLogos} path={selectedClub.logoPath} alt={selectedClub.name} className="w-full h-full object-contain" />
               </div>
             )}
 

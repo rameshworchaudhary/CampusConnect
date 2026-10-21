@@ -288,7 +288,7 @@ export const ClubAdminDashboard: React.FC = () => {
                 <div className="flex items-start gap-4">
                   {club?.logoUrl ? (
                     <div className="w-14 h-14 rounded-xl border border-border-default overflow-hidden bg-surface-container shrink-0">
-                      <StorageImage bucket={STORAGE_BUCKETS.clubLogos} path={club.logoPath} alt={club.name} className="w-full h-full object-cover" />
+                      <StorageImage bucket={STORAGE_BUCKETS.clubLogos} path={club.logoPath} alt={club.name} className="w-full h-full object-contain" />
                     </div>
                   ) : (
                     <div className="w-14 h-14 rounded-xl bg-surface-container flex items-center justify-center text-primary font-bold text-lg shrink-0 border border-border-default">
@@ -495,7 +495,7 @@ export const ClubAdminDashboard: React.FC = () => {
                             >
                               {evt.posterUrl && (
                                 <div className="w-full h-32 rounded-lg overflow-hidden border border-border-default bg-surface-container">
-                                  <StorageImage bucket={STORAGE_BUCKETS.eventPosters} path={evt.posterPath} alt={evt.title} className="w-full h-full object-cover" />
+                                  <StorageImage bucket={STORAGE_BUCKETS.eventPosters} path={evt.posterPath} alt={evt.title} className="w-full h-full object-contain" />
                                 </div>
                               )}
 
@@ -663,7 +663,7 @@ export const ClubAdminDashboard: React.FC = () => {
                               </button>
                             </div>
                             <p className="text-on-surface-variant line-clamp-2 leading-relaxed">{ann.content}</p>
-                            {ann.imagePath && <StorageImage bucket={STORAGE_BUCKETS.announcementImages} path={ann.imagePath} alt="Announcement attachment" className="mt-2 max-h-32 w-full rounded-lg object-cover" />}
+                            {ann.imagePath && <StorageImage bucket={STORAGE_BUCKETS.announcementImages} path={ann.imagePath} alt="Announcement attachment" className="mt-2 max-h-32 w-full rounded-lg object-contain" />}
                           </div>
                         ))}
                       </div>

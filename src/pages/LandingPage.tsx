@@ -162,11 +162,11 @@ export const LandingPage: React.FC = () => {
             </div>
           </div>
 
-          <div className="w-full lg:flex-1 max-w-md lg:max-w-none h-60 sm:h-80 rounded-2xl border border-border-default bg-surface-container-low overflow-hidden shadow-sm flex items-center justify-center relative">
+          <div className="w-full lg:flex-1 max-w-md lg:max-w-none aspect-[3/2] rounded-2xl border border-border-default bg-surface-container-low overflow-hidden shadow-sm flex items-center justify-center relative">
             <img
               src="/campus-connect-hero.png"
               alt="CampusConnect illustration showing campus clubs and events"
-              className="w-full h-full object-cover"
+              className="w-full h-full object-contain"
             />
           </div>
         </section>
@@ -192,7 +192,7 @@ export const LandingPage: React.FC = () => {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               {events.slice(0, 3).map((event) => (
                 <article key={event.id} className="overflow-hidden rounded-xl border border-border-default bg-surface shadow-sm">
-                  {event.posterPath && <StorageImage bucket={STORAGE_BUCKETS.eventPosters} path={event.posterPath} alt={`${event.title} poster`} className="h-36 w-full object-cover" />}
+                  {event.posterPath && <StorageImage bucket={STORAGE_BUCKETS.eventPosters} path={event.posterPath} alt={`${event.title} poster`} className="h-36 w-full object-contain bg-surface-container" />}
                   <div className="flex flex-col gap-2 p-4">
                     <span className="text-xs font-semibold text-on-surface-variant">{event.eventDate || 'Date to be announced'}</span>
                     <h3 className="font-bold text-on-surface">{event.title}</h3>
@@ -226,7 +226,7 @@ export const LandingPage: React.FC = () => {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               {clubs.slice(0, 3).map((club) => (
                 <article key={club.id} className="flex items-center gap-4 rounded-xl border border-border-default bg-surface p-4 shadow-sm">
-                  {club.logoPath ? <StorageImage bucket={STORAGE_BUCKETS.clubLogos} path={club.logoPath} alt={`${club.name} logo`} className="h-14 w-14 shrink-0 rounded-lg object-cover" /> : <span aria-hidden="true" className="material-symbols-outlined flex h-14 w-14 shrink-0 items-center justify-center rounded-lg bg-hover text-primary">groups</span>}
+                  {club.logoPath ? <StorageImage bucket={STORAGE_BUCKETS.clubLogos} path={club.logoPath} alt={`${club.name} logo`} className="h-14 w-14 shrink-0 rounded-lg object-contain bg-surface-container" /> : <span aria-hidden="true" className="material-symbols-outlined flex h-14 w-14 shrink-0 items-center justify-center rounded-lg bg-hover text-primary">groups</span>}
                   <div className="min-w-0">
                     <h3 className="truncate font-bold text-on-surface">{club.name}</h3>
                     <p className="text-sm text-on-surface-variant">{club.category}</p>
@@ -259,7 +259,7 @@ export const LandingPage: React.FC = () => {
               {bulletins.slice(0, 3).map((bulletin) => (
                 <article key={bulletin.id} className="overflow-hidden rounded-xl border border-border-default bg-surface shadow-sm">
                   {bulletin.imagePath && (
-                    <StorageImage bucket={STORAGE_BUCKETS.announcementImages} path={bulletin.imagePath} alt={`${bulletin.title} bulletin`} className="h-36 w-full object-cover" />
+                    <StorageImage bucket={STORAGE_BUCKETS.announcementImages} path={bulletin.imagePath} alt={`${bulletin.title} bulletin`} className="h-36 w-full object-contain bg-surface-container" />
                   )}
                   <div className="flex flex-col gap-2 p-4">
                     <span className="text-xs font-semibold text-on-surface-variant">
